@@ -1,6 +1,6 @@
 # Certain Breath
 
-![Certain Breath logo](resources/images/CertainBreath_small.jpg)
+![Certain Breath logo](resources/images/CertainBreath_banner.png)
 
 ## Introduction
 
