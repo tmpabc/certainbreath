@@ -47,5 +47,8 @@ _deps
 # CLion
 .idea
 
+# Python
+__pycache__
+
 # Misc c++ 
 *.cbp
