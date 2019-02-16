@@ -7,6 +7,11 @@
 #include <chrono>
 #include <curl/curl.h>
 #include <string.h>
+#include "easywsclient.hpp"
+#include "easywsclient.cpp"
+#include <assert.h>
+#include <stdlib.h>
+
 
 using namespace std;
 
@@ -32,9 +37,6 @@ struct Reading {
     }
 };
 
-// Network communication buffer.
-vector<Reading> unsentData;
-vector<Reading> generatedData;
 
 
 Reading getVoltage() {
@@ -52,18 +54,13 @@ Reading getVoltage() {
     return (Reading) {value, time};
 }
 
+Reading getRandomReading() {
+    long time = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
 
-/*
- * Initialise libcurl and its options
- */
-void init_curl() {
-    curl_global_init(CURL_GLOBAL_ALL);
-
-     CURL_EASY_HANDLE = curl_easy_init();
-
-    curl_easy_setopt(CURL_EASY_HANDLE, CURLOPT_URL, "http://127.0.0.1:5000/data");
-    //curl_easy_setopt(CURL_EASY_HANDLE, CURLOPT_VERBOSE, 1L);
+    return (Reading) {(float)(rand() % 330) / 100, time};
 }
+
+
 
 string generateJson(vector<Reading> readings) {
     string toSend = "[";
@@ -76,37 +73,35 @@ string generateJson(vector<Reading> readings) {
     return toSend;
 }
 
-void sendData() {
 
-    struct curl_slist *headers=NULL;
-    headers = curl_slist_append(headers, "Content-Type: application/json");
+void sendDummyData() {
+    using easywsclient::WebSocket;
+    WebSocket::pointer ws = WebSocket::from_url("ws://127.0.0.1:8080/ws");
+    assert(ws);
+    while(true) {
+        ws->send(getRandomReading().toJson());
+        ws->poll();
+        this_thread::sleep_for(chrono::seconds(1));
+    }
 
-    string toSend = generateJson(unsentData);
-    curl_easy_setopt(CURL_EASY_HANDLE, CURLOPT_POSTFIELDS, toSend.data());
-    curl_easy_setopt(CURL_EASY_HANDLE, CURLOPT_POSTFIELDSIZE, toSend.length());
-    curl_easy_setopt(CURL_EASY_HANDLE, CURLOPT_HTTPHEADER, headers);
-
-    curl_easy_perform(CURL_EASY_HANDLE);
-
-    curl_slist_free_all(headers);
-
-    unsentData.clear();
+    ws->close();
 }
 
-
 int main(int argc, char** argv) {
-    init_curl();
     //int setupResult = wiringPiSPISetup(CHANNEL, SPEED);
 
     //if (setupResult == -1) cout << "Error setting up wiringPi for SPi";
     //else printf("wiringPi is working!\n");
 
 
-    while(true) {
-        unsentData.push_back(getVoltage());
-        sendData();
-        this_thread::sleep_for(chrono::seconds(1));
-    }
+//    while(true) {
+//        unsentData.push_back(getVoltage());
+//        sendData();
+//        this_thread::sleep_for(chrono::seconds(1));
+//    }
 
+    srand(0);
+    thread sendingData (sendDummyData);
+    sendingData.join();
     return 0;
 }
