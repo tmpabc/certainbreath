@@ -77,21 +77,39 @@ string generateJson(vector<Reading> readings) {
 void sendDummyData() {
     using easywsclient::WebSocket;
     WebSocket::pointer ws = WebSocket::from_url("ws://127.0.0.1:8080/ws");
-    assert(ws);
+
     while(true) {
-        ws->send(getRandomReading().toJson());
-        ws->poll();
-        this_thread::sleep_for(chrono::seconds(1));
+        if(ws && ws->getReadyState() == WebSocket::readyStateValues::OPEN) {
+            ws->send(getRandomReading().toJson());
+            ws->poll();
+            this_thread::sleep_for(chrono::milliseconds(50));
+        } else {
+            while(true) {
+                ws = WebSocket::from_url("ws://127.0.0.1:8080/ws");
+                cout << "x";
+                if (ws) break;
+                this_thread::sleep_for(chrono::seconds(1));
+            }
+        }
     }
 
     ws->close();
 }
 
 int main(int argc, char** argv) {
-    //int setupResult = wiringPiSPISetup(CHANNEL, SPEED);
+//    int setupResult = wiringPiSPISetup(CHANNEL, SPEED);
+//
+//    if (setupResult == -1) cout << "Error setting up wiringPi for SPi";
+//    else printf("wiringPi SPI is working!\n");
+//
+//    setupResult = wiringPiSetup();
+//    if (setupResult == -1) cout << "Error setting up wiringPi for GPIO";
+//    else printf("wiringPi GPIO is working!\n");
 
-    //if (setupResult == -1) cout << "Error setting up wiringPi for SPi";
-    //else printf("wiringPi is working!\n");
+    //pinMode (2, OUTPUT);
+    //pinMode (0, OUTPUT);
+    //pinMode (3, OUTPUT);
+    //pinMode (7, OUTPUT);
 
 
 //    while(true) {
@@ -99,7 +117,6 @@ int main(int argc, char** argv) {
 //        sendData();
 //        this_thread::sleep_for(chrono::seconds(1));
 //    }
-
     srand(0);
     thread sendingData (sendDummyData);
     sendingData.join();
