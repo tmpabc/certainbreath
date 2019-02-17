@@ -8,5 +8,5 @@ Certain Breath is a device developed to help combat the problem of [Sudden Infan
 
 ## Device functionality
 
-Certain Breath is a infant sleeping monitor that tracks the changes in pressure under the infant. The data is analysed and stored in a Raspberry Pi which can notify the parents of concerning changes in real time. 
+Certain Breath is a infant sleeping monitor that tracks the respiratory rate of the infant using high-sensitivity force sesnors. The data is collected and analysed locally and sent off for external (dev/ web application) visualisation. Parents and people nearby are notified of any abnormalies in the respiratory functions through push-notifications and local means (i.e. LEDs or sound). 
 
