@@ -1,27 +1,11 @@
 import aiohttp
 from aiohttp import web
-import matplotlib.pyplot as plt
 from json import loads
-from io import StringIO
 import aiohttp_jinja2
 import jinja2
 
-MAX_DATAPOINTS = 500
-
 routes = web.RouteTableDef()
 
-readings = []
-times = []
-
-
-def plot_data():
-    plt.plot(times, readings, "r--")
-    img = StringIO()
-    plt.savefig(img, format="svg")
-    img.seek(0)
-
-    print(img.getvalue().split(">", 1)[1])
-    return img.getvalue().split(">", 1)[1]
 
 
 @routes.get("/")
@@ -31,10 +15,10 @@ async def hello(request):
     return {}
 
 
-async def update_clients():
+async def update_clients(data):
     for ws in app["socket_clients"]:
         if ws.prepared:
-            await ws.send_json({"time": times[-1], "reading": readings[-1]})
+            await ws.send_json(data)
             print("sent a message to a client.")
         else:
             print("ws not yet prepared.")
@@ -58,27 +42,21 @@ async def client_updater(request):
     return ws
 
 
-
 @routes.get("/ws")
 async def websocket_handler(request):
-    global readings
-    global times
+
     ws = web.WebSocketResponse()
     await ws.prepare(request)
 
     async for msg in ws:
-        print("received a message from the raspberry.")
+
         if msg.type == aiohttp.WSMsgType.TEXT:
             if msg.data == 'close':
                 await ws.close()
             else:
+                print("received a message from the raspberry: " + msg.data)
                 data = loads(msg.data)
-                readings.append(data["value"])
-                times.append(data["time"])
-                await update_clients()
-                if (len(readings)) > MAX_DATAPOINTS:
-                    readings = readings[-MAX_DATAPOINTS:]
-                    times = times[-MAX_DATAPOINTS:]
+                await update_clients(data)
 
         elif msg.type == aiohttp.WSMsgType.ERROR:
             print('ws connection closed with exception' + str(ws.exception()))

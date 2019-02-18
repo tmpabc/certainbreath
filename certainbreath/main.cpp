@@ -11,6 +11,8 @@
 #include "easywsclient.cpp"
 #include <assert.h>
 #include <stdlib.h>
+#include <mutex>
+#include "CppTimer.h"
 
 
 using namespace std;
@@ -24,18 +26,33 @@ static const int SPEED = 500000;
 // SPI communication buffer.
 unsigned char BUFFER[2]; // 2 bytes is enough to get the 10 bits from the ADC.
 
-// Handle for network operations via libcurl
-void *CURL_EASY_HANDLE;
+
+static const string wsURL = "ws://127.0.0.1:8080/ws";
+using easywsclient::WebSocket;
+WebSocket::pointer webSocket;
+
+static mutex pinslock;
+static mutex wslock;
+static mutex datalock;
+
+static const int MPPIN1 = 2;
+static const int MPPIN2 = 0;
+static const int MPPIN3 = 3;
+static const int MPPIN4 = 7;
 
 
 struct Reading {
     float value;
     long time;
+    string type;
 
     string toJson() {
-        return "{\"value\":" + to_string(value) + ", \"time\":" + to_string(time) + "}";
+        return "{\"value\":" + to_string(value) + ", \"time\":" + to_string(time) + ", \"type\": \"" + type +"\" }";
     }
 };
+
+vector<Reading> unsentData;
+
 
 
 
@@ -61,8 +78,50 @@ Reading getRandomReading() {
 }
 
 
+class PressureSensorTimer: public CppTimer {
 
-string generateJson(vector<Reading> readings) {
+    void timerEvent() {
+        pinslock.lock();
+        digitalWrite(MPPIN1, LOW);
+        digitalWrite(MPPIN2, LOW);
+        digitalWrite(MPPIN3, LOW);
+        digitalWrite(MPPIN4, HIGH);
+        Reading r = getVoltage();
+        pinslock.unlock();
+        datalock.lock();
+        unsentData.push_back(r);
+        datalock.unlock();
+    }
+};
+
+class TempSensorTimer: public CppTimer {
+
+    void timerEvent() {
+        pinslock.lock();
+        digitalWrite(MPPIN1, LOW);
+        digitalWrite(MPPIN2, LOW);
+        digitalWrite(MPPIN3, LOW);
+        digitalWrite(MPPIN4, HIGH);
+        Reading r = getVoltage();
+        pinslock.unlock();
+        datalock.lock();
+        unsentData.push_back(r);
+        datalock.unlock();
+    }
+};
+
+class FakeSensorTimer: public CppTimer {
+
+    void timerEvent() {
+
+        Reading r = getRandomReading();
+        datalock.lock();
+        unsentData.push_back(r);
+        datalock.unlock();
+    }
+};
+
+string generateReadingListJson(vector<Reading> readings) {
     string toSend = "[";
     for (int i = 0; i < readings.size(); i++) {
         toSend += readings[i].toJson();
@@ -73,52 +132,66 @@ string generateJson(vector<Reading> readings) {
     return toSend;
 }
 
+void sendData(string data) {
+    wslock.lock();
 
-void sendDummyData() {
-    using easywsclient::WebSocket;
-    WebSocket::pointer ws = WebSocket::from_url("ws://127.0.0.1:8080/ws");
-
-    while(true) {
-        if(ws && ws->getReadyState() == WebSocket::readyStateValues::OPEN) {
-            ws->send(getRandomReading().toJson());
-            ws->poll();
-            this_thread::sleep_for(chrono::milliseconds(50));
-        } else {
-            while(true) {
-                ws = WebSocket::from_url("ws://127.0.0.1:8080/ws");
-                cout << "x";
-                if (ws) break;
-                this_thread::sleep_for(chrono::seconds(1));
-            }
+    if(!webSocket || webSocket->getReadyState() != WebSocket::readyStateValues::OPEN) {
+        while(true) {
+            webSocket = WebSocket::from_url(wsURL);
+            this_thread::sleep_for(chrono::seconds(1));
+            if (webSocket) break;
         }
     }
 
-    ws->close();
+    webSocket->send(data);
+    webSocket->poll();
+    wslock.unlock();
 }
 
-int main(int argc, char** argv) {
-//    int setupResult = wiringPiSPISetup(CHANNEL, SPEED);
-//
-//    if (setupResult == -1) cout << "Error setting up wiringPi for SPi";
-//    else printf("wiringPi SPI is working!\n");
-//
-//    setupResult = wiringPiSetup();
-//    if (setupResult == -1) cout << "Error setting up wiringPi for GPIO";
-//    else printf("wiringPi GPIO is working!\n");
-
-    //pinMode (2, OUTPUT);
-    //pinMode (0, OUTPUT);
-    //pinMode (3, OUTPUT);
-    //pinMode (7, OUTPUT);
+void dataTransfer(int millis) {
+    while(true) {
+        datalock.lock();
+        string toSend = generateReadingListJson(unsentData);
+        unsentData.clear();
+        datalock.unlock();
+        sendData(toSend);
+        cout << "Sending" << "\n";
+        // Timing is not crucial for network communications since there are no guarantees anyway.
+        this_thread::sleep_for(chrono::milliseconds(millis));
+    }
+}
 
 
-//    while(true) {
-//        unsentData.push_back(getVoltage());
-//        sendData();
-//        this_thread::sleep_for(chrono::seconds(1));
-//    }
-    srand(0);
-    thread sendingData (sendDummyData);
-    sendingData.join();
+void rpInit() {
+    int setupResult = wiringPiSPISetup(CHANNEL, SPEED);
+
+    if (setupResult == -1) cout << "Error setting up wiringPi for SPi";
+    else printf("wiringPi SPI is working!\n");
+
+    setupResult = wiringPiSetup();
+    if (setupResult == -1) cout << "Error setting up wiringPi for GPIO";
+    else printf("wiringPi GPIO is working!\n");
+
+    pinMode (MPPIN1, OUTPUT);
+    pinMode (MPPIN2, OUTPUT);
+    pinMode (MPPIN3, OUTPUT);
+    pinMode (MPPIN4, OUTPUT);
+}
+
+
+
+int main() {
+
+
+    //rpInit();
+
+    FakeSensorTimer FSt;
+    PressureSensorTimer PSt;
+    TempSensorTimer TSt;
+
+    FSt.start(50 * 1000000);
+    thread DTthread(dataTransfer, 100);
+
+    DTthread.join();
     return 0;
 }

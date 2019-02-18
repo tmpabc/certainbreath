@@ -28,14 +28,17 @@
 
     var socket = new WebSocket("ws://127.0.0.1:8080/ws_update")
     socket.onmessage = function(event) {
-      //console.log("received message: ");
-      var msg = JSON.parse(event.data);
-      msg.time = new Date(msg.time);
-      lineArr.push(msg);
 
-      if (lineArr.length > 30) {
-        lineArr.shift();
+      var msg = JSON.parse(event.data);
+
+      msg.forEach(x => x.time = new Date(x.time))
+      lineArr.push(...msg);
+
+      if (lineArr.length > MAX_LENGTH) {
+        lineArr = lineArr.slice(lineArr.length - MAX_LENGTH);
       }
+
+      console.log("data", lineArr);
       d3.select("#chart").datum(lineArr).call(chart);
       }
 
@@ -48,26 +51,9 @@
       for (var i = 0; i < MAX_LENGTH; ++i) {
         lineArr.push({
           time: new Date(now.getTime() - ((MAX_LENGTH - i) * duration)),
-          reading: randomNumberBounds(0, 5),
+          value: 0,
         });
       }
-    }
-
-    function updateData() {
-      var now = new Date();
-
-      var lineData = {
-        time: now,
-        x: randomNumberBounds(0, 5),
-        y: randomNumberBounds(0, 2.5),
-        z: randomNumberBounds(0, 10)
-      };
-      lineArr.push(lineData);
-
-      if (lineArr.length > 30) {
-        lineArr.shift();
-      }
-      d3.select("#chart").datum(lineArr).call(chart);
     }
 
 

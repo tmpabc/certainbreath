@@ -13,7 +13,7 @@ function realTimeLineChart() {
         return {
           label: c,
           values: data.map(function(d) {
-            return {time: +d.time, value: d["reading"]};
+            return {time: +d.time, value: d.value};
           })
         };
       });
