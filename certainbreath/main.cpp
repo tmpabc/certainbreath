@@ -27,7 +27,9 @@ static const int SPEED = 500000;
 unsigned char BUFFER[2]; // 2 bytes is enough to get the 10 bits from the ADC.
 
 
-static const string wsURL = "ws://127.0.0.1:8080/ws";
+//static const string wsURL = "ws://127.0.0.1:8080/ws";
+static const string wsURL = "ws://certainbreath.herokuapp.com/ws";
+
 using easywsclient::WebSocket;
 WebSocket::pointer webSocket;
 

@@ -6,13 +6,14 @@ import jinja2
 
 routes = web.RouteTableDef()
 
-
+#WSURL = "ws://127.0.0.1:5000/ws_update"
+WSURL = "ws://certainbreath.herokuapp.com/ws_update"
 
 @routes.get("/")
 @aiohttp_jinja2.template("main.jinja2")
 async def hello(request):
     # return web.Response(body=f"<body> {plot_data()} </body>".encode("utf-8"), content_type="text/html")
-    return {}
+    return {"wsURL": WSURL}
 
 
 async def update_clients(data):
@@ -71,5 +72,6 @@ if __name__ == "__main__":
     app["socket_clients"] = []
     app.add_routes(routes)
     app.add_routes([web.static("/js", "js/")])
-    web.run_app(app)
+    port = int(os.environ.get("PORT", 5000))
+    web.run_app(app, port=port)
 
