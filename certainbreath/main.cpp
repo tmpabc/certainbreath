@@ -37,15 +37,15 @@ static mutex pinslock;
 static mutex wslock;
 static mutex datalock;
 
-static const int MPPIN1 = 2;
-static const int MPPIN2 = 0;
-static const int MPPIN3 = 3;
-static const int MPPIN4 = 7;
+static const int MPPIN1 = 2; // Physical 13 // A1
+static const int MPPIN2 = 0; // Physical 11 // A0
+static const int MPPIN3 = 3; // Physical 15 // A2
+static const int MPPIN4 = 7; // Physical 7  // EN
 
 
 struct Reading {
     float value;
-    long time;
+    long long time;
     string type;
 
     string toJson() {
@@ -68,13 +68,13 @@ Reading getVoltage() {
 
     float value = bin / (float)1024 * REF_V; // convert the bin number to the voltage value.
     // Get milliseconds since epoch.
-    long time = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
+    long long time = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
 
-    return (Reading) {value, time};
+    return (Reading) {value, time, "Voltage"};
 }
 
 Reading getRandomReading() {
-    long time = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
+    long long time = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
 
     return (Reading) {(float)(rand() % 330) / 100, time};
 }
@@ -89,6 +89,7 @@ class PressureSensorTimer: public CppTimer {
         digitalWrite(MPPIN3, LOW);
         digitalWrite(MPPIN4, HIGH);
         Reading r = getVoltage();
+        r.type = "Pressure";
         pinslock.unlock();
         datalock.lock();
         unsentData.push_back(r);
@@ -101,10 +102,11 @@ class TempSensorTimer: public CppTimer {
     void timerEvent() {
         pinslock.lock();
         digitalWrite(MPPIN1, LOW);
-        digitalWrite(MPPIN2, LOW);
+        digitalWrite(MPPIN2, HIGH);
         digitalWrite(MPPIN3, LOW);
         digitalWrite(MPPIN4, HIGH);
         Reading r = getVoltage();
+        r.type = "Temperature";
         pinslock.unlock();
         datalock.lock();
         unsentData.push_back(r);
@@ -164,6 +166,22 @@ void dataTransfer(int millis) {
 }
 
 
+void dataPrinting(int millis) {
+    while(true) {
+        datalock.lock();
+
+        string toPrint = "";
+        for (int i = 0; i < unsentData.size(); i++) {
+            toPrint += unsentData[i].toJson() + "\n";
+        }
+        unsentData.clear();
+        datalock.unlock();
+
+        cout << toPrint;
+        this_thread::sleep_for(chrono::milliseconds(millis));
+    }
+}
+
 void rpInit() {
     int setupResult = wiringPiSPISetup(CHANNEL, SPEED);
 
@@ -185,15 +203,23 @@ void rpInit() {
 int main() {
 
 
-    //rpInit();
+    rpInit();
 
     FakeSensorTimer FSt;
     PressureSensorTimer PSt;
     TempSensorTimer TSt;
 
-    FSt.start(50 * 1000000);
-    thread DTthread(dataTransfer, 100);
+    // first number in the multiplication is the milliseconds.
+    TSt.start(100 * 1000000);
+    //this_thread::sleep_for(chrono::milliseconds(100));
+    //TSt.start(300 * 1000000);
 
+    // Data sending thread
+    thread DTthread(dataTransfer, 100);
     DTthread.join();
+
+    // Data printing thread
+    //thread DPthread(dataPrinting, 50);
+    //DPthread.join();
     return 0;
 }
