@@ -9,10 +9,10 @@ function realTimeLineChart() {
   function chart(selection) {
     // Based on https://bl.ocks.org/mbostock/3884955
     selection.each(function(data) {
-      data = ["x"].map(function(c) {
+      data = ["Pressure", "Temperature"].map(function(c) {
         return {
           label: c,
-          values: data.map(function(d) {
+          values: data.filter(d => d.type == c).map(function(d) {
             return {time: +d.time, value: d.value};
           })
         };
@@ -106,7 +106,8 @@ function realTimeLineChart() {
         .data(data)
         .text(function(d) {
           return d.label.toUpperCase() + ": " + d.values[d.values.length-1].value;
-        });
+        })
+        .attr("transform", "translate(-120, 0)");
 
       // For transitions https://bl.ocks.org/mbostock/1642874
       function tick() {

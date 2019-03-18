@@ -52,6 +52,12 @@
         lineArr.push({
           time: new Date(now.getTime() - ((MAX_LENGTH - i) * duration)),
           value: 0,
+          type: "Pressure"
+        });
+        lineArr.push({
+          time: new Date(now.getTime() - ((MAX_LENGTH - i) * duration)),
+          value: 0,
+          type: "Temperature"
         });
       }
     }
