@@ -1,6 +1,6 @@
 // Taken from https://bl.ocks.org/pjsier/fbf9317b31f070fd540c5523fef167ac and modified.
 function realTimeLineChart() {
-  var margin = {top: 20, right: 20, bottom: 20, left: 20},
+  var margin = {top: 40, right: 20, bottom: 20, left: 60},
       width = 600,
       height = 400,
       duration = 500,
