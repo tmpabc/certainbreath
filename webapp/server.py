@@ -24,6 +24,11 @@ async def update_clients(data):
         else:
             print("ws not yet prepared.")
 
+    # Clean-up
+    for i in range(len(app["socket_clients"])):
+        if app["socket_clients"][i].closed:
+            del app["socket_clients"][i]
+
 
 @routes.get("/ws_update")
 async def client_updater(request):
@@ -54,10 +59,13 @@ async def websocket_handler(request):
         if msg.type == aiohttp.WSMsgType.TEXT:
             if msg.data == 'close':
                 await ws.close()
+                request.app["socket_clients"].remove(ws)
             else:
                 print("received a message from the raspberry: " + msg.data)
                 data = loads(msg.data)
                 await update_clients(data)
+        elif msg.type == aiohttp.WSMsgType.CLOSE:
+            request.app["socket_clients"].remove(ws)
 
         elif msg.type == aiohttp.WSMsgType.ERROR:
             print('ws connection closed with exception' + str(ws.exception()))
