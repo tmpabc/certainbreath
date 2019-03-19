@@ -9,7 +9,7 @@ function realTimeLineChart() {
   function chart(selection) {
     // Based on https://bl.ocks.org/mbostock/3884955
     selection.each(function(data) {
-      var data_types = [...new Set(data.map(d => d.type))];
+      var data_types = [...new Set(data.map(d => d.type))].sort();
       data = data_types.map(function(c) {
         return {
           label: c,
@@ -108,7 +108,7 @@ function realTimeLineChart() {
         .text(function(d) {
           return d.label.toUpperCase() + ": " + d.values[d.values.length-1].value;
         })
-        .attr("transform", "translate(-120, 0)");
+        .attr("transform", "translate(-160, 0)");
 
       // For transitions https://bl.ocks.org/mbostock/1642874
       function tick() {
