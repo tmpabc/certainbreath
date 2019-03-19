@@ -28,7 +28,8 @@ static const int SPEED = 500000;
 unsigned char BUFFER[2]; // 2 bytes is enough to get the 10 bits from the ADC.
 
 
-static const float AMP_GAIN = 1.33;
+//static const float AMP_GAIN = 1.33;
+static const float AMP_GAIN = 1.5;
 
 //static const string wsURL = "ws://127.0.0.1:8080/ws";
 static const string wsURL = "ws://certainbreath.herokuapp.com/ws";
@@ -40,11 +41,22 @@ static mutex pinslock;
 static mutex wslock;
 static mutex datalock;
 
-static const int MPPIN1 = 2; // Physical 13 // A1
-static const int MPPIN2 = 0; // Physical 11 // A0
-static const int MPPIN3 = 3; // Physical 15 // A2
-static const int MPPIN4 = 7; // Physical 7  // EN
+// Pins for the multiplexer.
+//static const int MPPIN1 = 2; // Physical 13 // A1
+//static const int MPPIN2 = 0; // Physical 11 // A0
+//static const int MPPIN3 = 3; // Physical 15 // A2
+//static const int MPPIN4 = 7; // Physical 7  // EN
 
+// Pins for the PCB
+static const int MPPIN1 = 5; // Physical 18 // A1
+static const int MPPIN2 = 4; // Physical 16 // A0
+static const int MPPIN3 = 6; // Physical 22 // A2
+static const int MPPIN4 = 1; // Physical 12  // EN
+
+
+// Pins for the motors.
+static const int MTPIN1 = 21;
+static const int MTPIN2 = 22;
 
 struct Reading {
     float value;
@@ -58,8 +70,23 @@ struct Reading {
 
 vector<Reading> unsentData;
 
-
+// for 13bit ADC
 Reading getVoltage() {
+    wiringPiSPIDataRW(CHANNEL, BUFFER, 2); // Read 2 bytes.
+
+    //int bin = (BUFFER[0] << 4 >> 4) * 256 + BUFFER[1];
+    int bin = BUFFER[1];
+
+    //float value = bin / (float)4096 * REF_V; // convert the bin number to the voltage value.
+    // Get milliseconds since epoch.
+    float value = (float) bin;
+    long long time = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
+
+    return (Reading) {value, time, "Voltage"};
+}
+
+// for 10 bit ADC
+Reading getVoltage_10() {
     wiringPiSPIDataRW(CHANNEL, BUFFER, 2); // Read 2 bytes.
 
     // We take the last 5 bits from the first byte and first 5 bits from the second byte
@@ -82,7 +109,7 @@ Reading getForce(Reading voltage) {
     // log(F) = a*log(r) + b
 
     float v_in = voltage.value / AMP_GAIN;
-    float r1 = 2200;
+    float r1 = 6000;
 
     // Obtained by 1st degree polynomial fit to log(F) vs log(r)
     float a = -1.3077116639139494;
@@ -105,7 +132,7 @@ Reading getTemperature(Reading voltage) {
 
     float v_in = voltage.value / AMP_GAIN;
 
-    float r2 = 6800;
+    float r2 = 11000;
     float r0 = 10000;
     //float r_th = (r2 * v_in) / (3.3 - v_in);
     float r_th = r2 * (3.3 - v_in) / v_in;
@@ -130,13 +157,29 @@ Reading getRandomReading() {
 
 class PressureSensorTimer: public CppTimer {
 
+    int pin1, pin2, pin3, pin4;
+    string type;
+
+public:
+    PressureSensorTimer(int pin1, int pin2, int pin3, int pin4, string type = "") {
+        this->pin1 = pin1;
+        this->pin2 = pin2;
+        this->pin3 = pin3;
+        this->pin4 = pin4;
+        this->type = type;
+    }
+
     void timerEvent() {
         pinslock.lock();
-        digitalWrite(MPPIN1, LOW);
-        digitalWrite(MPPIN2, LOW);
-        digitalWrite(MPPIN3, LOW);
-        digitalWrite(MPPIN4, HIGH);
-        Reading r = getForce(getVoltage());
+        digitalWrite(MPPIN1, this->pin1);
+        digitalWrite(MPPIN2, this->pin2);
+        digitalWrite(MPPIN3, this->pin3);
+        digitalWrite(MPPIN4, this->pin4);
+        //Reading r = getForce(getVoltage());
+        Reading r = getVoltage();
+        if (this-> type != "") {
+            r.type = this->type;
+        }
         pinslock.unlock();
         datalock.lock();
         unsentData.push_back(r);
@@ -146,17 +189,52 @@ class PressureSensorTimer: public CppTimer {
 
 class TempSensorTimer: public CppTimer {
 
+    int pin1, pin2, pin3, pin4;
+    string type;
+
+public:
+    TempSensorTimer(int pin1, int pin2, int pin3, int pin4, string type = "") {
+        this->pin1 = pin1;
+        this->pin2 = pin2;
+        this->pin3 = pin3;
+        this->pin4 = pin4;
+        this->type = type;
+    }
+
+
     void timerEvent() {
         pinslock.lock();
-        digitalWrite(MPPIN1, LOW);
-        digitalWrite(MPPIN2, HIGH);
-        digitalWrite(MPPIN3, LOW);
-        digitalWrite(MPPIN4, HIGH);
-        Reading r = getTemperature(getVoltage());
+        digitalWrite(MPPIN1, this->pin1);
+        digitalWrite(MPPIN2, this->pin2);
+        digitalWrite(MPPIN3, this->pin3);
+        digitalWrite(MPPIN4, this->pin4);
+        //Reading r = getTemperature(getVoltage());
+        Reading r = getVoltage();
+        if (this->type != "") {
+            r.type = this->type;
+        }
         pinslock.unlock();
         datalock.lock();
         unsentData.push_back(r);
         datalock.unlock();
+        //motorCheck(r);
+    }
+
+    void motorCheck(Reading r) {
+        if (r.type == "Temperature_top") {
+            if (r.value > 26) {
+                digitalWrite(MTPIN1, HIGH);
+            } else {
+                digitalWrite(MTPIN1, LOW);
+            }
+        } else if (r.type == "Temperature_bottom"){
+            if (r.value > 26) {
+                digitalWrite(MTPIN2, HIGH);
+            } else {
+                digitalWrite(MTPIN2, LOW);
+
+            }
+        }
     }
 };
 
@@ -242,6 +320,9 @@ void rpInit() {
     pinMode (MPPIN2, OUTPUT);
     pinMode (MPPIN3, OUTPUT);
     pinMode (MPPIN4, OUTPUT);
+
+    pinMode (MTPIN1, OUTPUT);
+    pinMode (MTPIN2, OUTPUT);
 }
 
 
@@ -252,20 +333,35 @@ int main() {
     rpInit();
 
     FakeSensorTimer FSt;
-    PressureSensorTimer PSt;
-    TempSensorTimer TSt;
+
+    //Breadboard
+    //PressureSensorTimer PSt_left(LOW, HIGH, LOW, HIGH, "Pressure_left");
+    //PressureSensorTimer PSt_right(LOW, LOW, LOW, HIGH, "Pressure_right");
+
+    //PCB
+    PressureSensorTimer PSt_left(HIGH, HIGH, LOW, HIGH, "Pressure_left");
+    TempSensorTimer TSt_top(LOW, LOW, HIGH, HIGH, "Temperature_top");
+
+    //Breadboard
+    //TempSensorTimer TSt_top(HIGH, LOW, HIGH, HIGH, "Temperature_top");
+    //TempSensorTimer TSt_bottom(HIGH, HIGH, HIGH, HIGH, "Temperature_bottom");
 
     // first number in the multiplication is the milliseconds.
-    PSt.start(100 * 1000000);
-    this_thread::sleep_for(chrono::milliseconds(100));
-    //TSt.start(300 * 1000000);
+    //PSt_left.start(100 * 1000000);
+    this_thread::sleep_for(chrono::milliseconds(50));
+    //PSt_right.start(100 * 1000000);
+    this_thread::sleep_for(chrono::milliseconds(50));
+    TSt_top.start(500 * 1000000);
+    this_thread::sleep_for(chrono::milliseconds(50));
+    //TSt_bottom.start(500 * 1000000);
+
 
     // Data sending thread
-    thread DTthread(dataTransfer, 100);
-    DTthread.join();
+    //thread DTthread(dataTransfer, 100);
+    //DTthread.join();
 
     // Data printing thread
-    //thread DPthread(dataPrinting, 50);
-    //DPthread.join();
+    thread DPthread(dataPrinting, 50);
+    DPthread.join();
     return 0;
 }
