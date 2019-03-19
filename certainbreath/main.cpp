@@ -11,6 +11,7 @@
 #include "easywsclient.cpp"
 #include <assert.h>
 #include <stdlib.h>
+#include <math.h>
 #include <mutex>
 #include "CppTimer.h"
 
@@ -26,6 +27,8 @@ static const int SPEED = 500000;
 // SPI communication buffer.
 unsigned char BUFFER[2]; // 2 bytes is enough to get the 10 bits from the ADC.
 
+
+static const float AMP_GAIN = 1.33;
 
 //static const string wsURL = "ws://127.0.0.1:8080/ws";
 static const string wsURL = "ws://certainbreath.herokuapp.com/ws";
@@ -56,8 +59,6 @@ struct Reading {
 vector<Reading> unsentData;
 
 
-
-
 Reading getVoltage() {
     wiringPiSPIDataRW(CHANNEL, BUFFER, 2); // Read 2 bytes.
 
@@ -71,6 +72,53 @@ Reading getVoltage() {
     long long time = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
 
     return (Reading) {value, time, "Voltage"};
+}
+
+/*
+ * Function to get the force in grams from given by the voltage reading from a FSR sensor.
+ */
+Reading getForce(Reading voltage) {
+
+    // log(F) = a*log(r) + b
+
+    float v_in = voltage.value / AMP_GAIN;
+    float r1 = 2200;
+
+    // Obtained by 1st degree polynomial fit to log(F) vs log(r)
+    float a = -1.3077116639139494;
+    float b = 7.141611411251033;
+
+    // R_fsr
+    //float r = (r1 * v_in) / (3.3 - v_in);
+    float r = r1 * (3.3 - v_in) / v_in;
+
+    float F = exp(log(r) * a + b);
+
+    //return (Reading) {F, voltage.time, "Pressure"};
+    return (Reading) {F, voltage.time, "Pressure"};
+}
+
+/*
+ * Function to get the temperature in Celsius given by the voltage reading from a termistor.
+ */
+Reading getTemperature(Reading voltage) {
+
+    float v_in = voltage.value / AMP_GAIN;
+
+    float r2 = 6800;
+    float r0 = 10000;
+    //float r_th = (r2 * v_in) / (3.3 - v_in);
+    float r_th = r2 * (3.3 - v_in) / v_in;
+
+    float t_0 = 298;
+    float beta = 3977;
+
+
+    float t_K = (t_0 * beta) / (t_0 * log(r_th / r0) + beta);
+
+    float t_C = t_K - 273.15;
+
+    return (Reading) {t_C, voltage.time, "Temperature"};
 }
 
 Reading getRandomReading() {
@@ -88,8 +136,7 @@ class PressureSensorTimer: public CppTimer {
         digitalWrite(MPPIN2, LOW);
         digitalWrite(MPPIN3, LOW);
         digitalWrite(MPPIN4, HIGH);
-        Reading r = getVoltage();
-        r.type = "Pressure";
+        Reading r = getForce(getVoltage());
         pinslock.unlock();
         datalock.lock();
         unsentData.push_back(r);
@@ -105,8 +152,7 @@ class TempSensorTimer: public CppTimer {
         digitalWrite(MPPIN2, HIGH);
         digitalWrite(MPPIN3, LOW);
         digitalWrite(MPPIN4, HIGH);
-        Reading r = getVoltage();
-        r.type = "Temperature";
+        Reading r = getTemperature(getVoltage());
         pinslock.unlock();
         datalock.lock();
         unsentData.push_back(r);
@@ -210,8 +256,8 @@ int main() {
     TempSensorTimer TSt;
 
     // first number in the multiplication is the milliseconds.
-    TSt.start(100 * 1000000);
-    //this_thread::sleep_for(chrono::milliseconds(100));
+    PSt.start(100 * 1000000);
+    this_thread::sleep_for(chrono::milliseconds(100));
     //TSt.start(300 * 1000000);
 
     // Data sending thread
