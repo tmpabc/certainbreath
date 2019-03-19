@@ -74,12 +74,12 @@ vector<Reading> unsentData;
 Reading getVoltage() {
     wiringPiSPIDataRW(CHANNEL, BUFFER, 2); // Read 2 bytes.
 
-    //int bin = (BUFFER[0] << 4 >> 4) * 256 + BUFFER[1];
-    int bin = BUFFER[1];
+    int bin = (BUFFER[0]& 0x0F) * 256 + BUFFER[1];
+    //int bin = BUFFER[1];
 
-    //float value = bin / (float)4096 * REF_V; // convert the bin number to the voltage value.
+    float value = bin / (float)4096 * REF_V; // convert the bin number to the voltage value.
     // Get milliseconds since epoch.
-    float value = (float) bin;
+    //float value = (float) bin;
     long long time = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
 
     return (Reading) {value, time, "Voltage"};
@@ -340,6 +340,7 @@ int main() {
 
     //PCB
     PressureSensorTimer PSt_left(HIGH, HIGH, LOW, HIGH, "Pressure_left");
+    //                      A1 A0 A2 EN
     TempSensorTimer TSt_top(LOW, LOW, HIGH, HIGH, "Temperature_top");
 
     //Breadboard
