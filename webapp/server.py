@@ -6,13 +6,12 @@ import jinja2
 
 routes = web.RouteTableDef()
 
-#WSURL = "ws://127.0.0.1:5000/ws_update"
+#WSURL = "ws://0.0.0.0:5000/ws_update"
 WSURL = "ws://certainbreath.herokuapp.com/ws_update"
 
 @routes.get("/")
 @aiohttp_jinja2.template("main.jinja2")
 async def hello(request):
-    # return web.Response(body=f"<body> {plot_data()} </body>".encode("utf-8"), content_type="text/html")
     return {"wsURL": WSURL}
 
 
@@ -23,11 +22,6 @@ async def update_clients(data):
             print("sent a message to a client.")
         else:
             print("ws not yet prepared.")
-
-    # Clean-up
-    for i in range(len(app["socket_clients"])):
-        if app["socket_clients"][i].closed:
-            del app["socket_clients"][i]
 
 
 @routes.get("/ws_update")
@@ -45,6 +39,7 @@ async def client_updater(request):
                 print("reiceived message from the client: " + msg.data)
         elif msg.type == aiohttp.WSMsgType.ERROR:
             print('ws connection closed with exception' + str(ws.exception()))
+    request.app["socket_clients"].remove(ws)
     return ws
 
 
@@ -59,13 +54,10 @@ async def websocket_handler(request):
         if msg.type == aiohttp.WSMsgType.TEXT:
             if msg.data == 'close':
                 await ws.close()
-                request.app["socket_clients"].remove(ws)
             else:
                 print("received a message from the raspberry: " + msg.data)
                 data = loads(msg.data)
                 await update_clients(data)
-        elif msg.type == aiohttp.WSMsgType.CLOSE:
-            request.app["socket_clients"].remove(ws)
 
         elif msg.type == aiohttp.WSMsgType.ERROR:
             print('ws connection closed with exception' + str(ws.exception()))
