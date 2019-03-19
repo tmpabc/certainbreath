@@ -9,7 +9,8 @@ function realTimeLineChart() {
   function chart(selection) {
     // Based on https://bl.ocks.org/mbostock/3884955
     selection.each(function(data) {
-      data = ["Pressure", "Temperature"].map(function(c) {
+      var data_types = [...new Set(data.map(d => d.type))];
+      data = data_types.map(function(c) {
         return {
           label: c,
           values: data.filter(d => d.type == c).map(function(d) {
