@@ -56,35 +56,6 @@
       d3.select("#chart_temperature").datum(temperatureArr).call(temperatureChart);
       };
 
-
-    function seedData() {
-      var now = new Date();
-      for (var i = 0; i < MAX_LENGTH/2; ++i) {
-        temperatureArr.push({
-          time: new Date(now.getTime() - ((MAX_LENGTH/2 - i) * duration)),
-          value: i + 1,
-          type: "1"
-        });
-        pressureArr.push({
-          time: new Date(now.getTime() - ((MAX_LENGTH - i) * duration)),
-          value: i + 2,
-          type: "2"
-        });
-        temperatureArr.push({
-          time: new Date(now.getTime() - ((MAX_LENGTH/2 - i) * duration)),
-          value: i + 1,
-          type: "3"
-        });
-        pressureArr.push({
-          time: new Date(now.getTime() - ((MAX_LENGTH - i) * duration)),
-          value: i + 2,
-          type: "4"
-        });
-      }
-    }
-
-
-
     function resize() {
       if (d3.select("#chart_pressure svg").empty() || d3.select("#chart_temperature svg").empty()) {
         return;
@@ -97,7 +68,6 @@
     }
 
     document.addEventListener("DOMContentLoaded", function() {
-      seedData();
       //window.setInterval(updateData, 500);
       d3.select("#chart_pressure").datum(pressureArr).call(pressureChart);
       d3.select("#chart_temperature").datum(temperatureArr).call(temperatureChart);
