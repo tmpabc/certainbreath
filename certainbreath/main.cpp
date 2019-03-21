@@ -200,6 +200,7 @@ class FakeSensorTimer: public CppTimer {
 };
 
 
+
 void sendData(string data) {
     wslock.lock();
 
@@ -218,10 +219,50 @@ void sendData(string data) {
 }
 
 /*
- * The cleanable parameter is used to determine the status a Reading needs to achieve to be cleaned from tha dataBuffer.
+ * Timer used to trasfer data to the web server through the websocket connection.
  */
-void dataCleaning(ReadingStatus cleanable, int millis) {
-    while (true) {
+class DataTransferTimer: public CppTimer {
+
+    void timerEvent() {
+        datalock.lock();
+
+        string toSend = "[";
+        bool comma = false;
+        for (auto &datum : dataBuffer) {
+            if (!datum.status.sent) {
+                if (comma) toSend+= ","; else comma = true; // Skip the first comma.
+                toSend += datum.toJson();
+                datum.status.sent = true;
+            }
+        }
+
+        toSend += "]";
+        datalock.unlock();
+
+        // Only send if there's data.
+        if (toSend.length() > 2) {
+            cout << "Sending" << "\n";
+            sendData(toSend);
+        }
+
+    }
+};
+
+/*
+ * DataBuffer clean-up timer.
+ */
+class DataCleanUpTimer: public CppTimer {
+    ReadingStatus cleanable;
+
+public:
+    /*
+     * The cleanable parameter is used to determine the status a Reading needs to achieve to be cleaned from tha dataBuffer.
+     */
+    DataCleanUpTimer(ReadingStatus cleanable) {
+        this->cleanable = cleanable;
+    }
+
+    void timerEvent() {
         datalock.lock();
         auto it = dataBuffer.begin();
         while (it != dataBuffer.end()) {
@@ -230,51 +271,30 @@ void dataCleaning(ReadingStatus cleanable, int millis) {
             } else it++;
         }
         datalock.unlock();
-        // Timing is not crucial for cleanup.
-        this_thread::sleep_for(chrono::milliseconds(millis));
     }
-}
+};
 
-void dataTransfer(int millis) {
-    while(true) {
-        datalock.lock();
+/*
+ * Timer used to print sampled readings to the console.
+ */
+class DataPrintingTimer: public CppTimer {
 
-        string toSend = "[";
-        bool comma = false;
-        for (int i = 0; i < dataBuffer.size(); i++) {
-            if (!dataBuffer[i].status.sent) {
-                if (comma) toSend+= ","; else comma = true; // Skip the first comma.
-                toSend += dataBuffer[i].toJson();
-            }
-        }
-        toSend += "]";
-
-        datalock.unlock();
-        sendData(toSend);
-        cout << "Sending" << "\n";
-        // Timing is not crucial for network communications since there are no guarantees anyway.
-        this_thread::sleep_for(chrono::milliseconds(millis));
-    }
-}
-
-
-void dataPrinting(int millis) {
-    while(true) {
+    void timerEvent() {
         datalock.lock();
 
         string toPrint = "";
-        for (int i = 0; i < dataBuffer.size(); i++) {
-            if (!dataBuffer[i].status.printed) {
-                toPrint += dataBuffer[i].toJson() + "\n";
+        for (auto &datum : dataBuffer) {
+            if (!datum.status.printed) {
+                toPrint += datum.toJson() + "\n";
+                datum.status.printed = true;
             }
         }
         datalock.unlock();
 
         cout << toPrint;
-        // Timing is not crucial.
-        this_thread::sleep_for(chrono::milliseconds(millis));
     }
-}
+};
+
 
 void rpInit() {
     int setupResult = wiringPiSPISetup(CHANNEL, SPEED);
@@ -308,13 +328,12 @@ int main() {
     this_thread::sleep_for(chrono::milliseconds(100));
     //TSt.start(300 * 1000000);
 
-    // Data sending thread
-    thread DTthread(dataTransfer, 100);
-    //DTthread.join();
+    DataTransferTimer DTt;
+    DTt.start(100 * 1000000);
 
-    // Data printing thread
-    thread DPthread(dataPrinting, 50);
-    //DPthread.join();
+    DataPrintingTimer DPt;
+    DPt.start(50 * 1000000);
+
 
     // Data cleaning thread
     ReadingStatus cleanable;
@@ -325,7 +344,12 @@ int main() {
     cleanable.printed = true;
     cleanable.recorded = false;
 
-    thread DCthread(dataCleaning, cleanable, 1000);
+    //thread DCthread(dataCleaning, cleanable, 1000);
+
+    DataCleanUpTimer DCt(cleanable);
+    DCt.start(500 * 1000000);
+
+
 
 
     while(1);
