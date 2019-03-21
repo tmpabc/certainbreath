@@ -30,8 +30,8 @@ unsigned char BUFFER[2]; // 2 bytes is enough to get the 10 bits from the ADC.
 
 static const float AMP_GAIN = 1.33;
 
-//static const string wsURL = "ws://127.0.0.1:8080/ws";
-static const string wsURL = "ws://certainbreath.herokuapp.com/ws";
+static const string wsURL = "ws://127.0.0.1:5000/ws";
+//static const string wsURL = "ws://certainbreath.herokuapp.com/ws";
 
 using easywsclient::WebSocket;
 WebSocket::pointer webSocket;
@@ -45,18 +45,38 @@ static const int MPPIN2 = 0; // Physical 11 // A0
 static const int MPPIN3 = 3; // Physical 15 // A2
 static const int MPPIN4 = 7; // Physical 7  // EN
 
+/*
+ * Structure that defines the usage flags of a Reading. That is, how has the Reading been handled.
+ */
+struct ReadingStatus {
+    bool analysed = false;
+    bool sent = false;
+    bool printed = false;
+    bool recorded = false;
+
+    bool operator==(const ReadingStatus& other) {
+        return (
+                this->analysed == other.analysed &&
+                this->sent == other.sent &&
+                this->printed == other.printed &&
+                this->recorded == other.recorded
+                );
+    }
+};
 
 struct Reading {
     float value;
     long long time;
     string type;
 
+    ReadingStatus status;
+
     string toJson() {
         return "{\"value\":" + to_string(value) + ", \"time\":" + to_string(time) + ", \"type\": \"" + type +"\" }";
     }
 };
 
-vector<Reading> unsentData;
+vector<Reading> dataBuffer; // Buffer to store the readings.
 
 
 Reading getVoltage() {
@@ -124,10 +144,12 @@ Reading getTemperature(Reading voltage) {
 Reading getRandomReading() {
     long long time = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
 
-    return (Reading) {(float)(rand() % 330) / 100, time};
+    return (Reading) {(float)(rand() % 330) / 100, time, "fake"};
 }
 
-
+/*
+ * Used to sample pressure Readings.
+ */
 class PressureSensorTimer: public CppTimer {
 
     void timerEvent() {
@@ -139,11 +161,14 @@ class PressureSensorTimer: public CppTimer {
         Reading r = getForce(getVoltage());
         pinslock.unlock();
         datalock.lock();
-        unsentData.push_back(r);
+        dataBuffer.push_back(r);
         datalock.unlock();
     }
 };
 
+/*
+ * Used to sample temperature Readings.
+ */
 class TempSensorTimer: public CppTimer {
 
     void timerEvent() {
@@ -155,36 +180,30 @@ class TempSensorTimer: public CppTimer {
         Reading r = getTemperature(getVoltage());
         pinslock.unlock();
         datalock.lock();
-        unsentData.push_back(r);
+        dataBuffer.push_back(r);
         datalock.unlock();
     }
 };
 
+/*
+ * Used to sample fake Readings (for testing purposes).
+ */
 class FakeSensorTimer: public CppTimer {
 
     void timerEvent() {
 
         Reading r = getRandomReading();
         datalock.lock();
-        unsentData.push_back(r);
+        dataBuffer.push_back(r);
         datalock.unlock();
     }
 };
 
-string generateReadingListJson(vector<Reading> readings) {
-    string toSend = "[";
-    for (int i = 0; i < readings.size(); i++) {
-        toSend += readings[i].toJson();
-        if (i != readings.size() - 1) toSend += ",";
-    }
-    toSend += "]";
-
-    return toSend;
-}
 
 void sendData(string data) {
     wslock.lock();
 
+    // Try to reconnect every second if the connection is not available.
     if(!webSocket || webSocket->getReadyState() != WebSocket::readyStateValues::OPEN) {
         while(true) {
             webSocket = WebSocket::from_url(wsURL);
@@ -198,11 +217,38 @@ void sendData(string data) {
     wslock.unlock();
 }
 
+/*
+ * The cleanable parameter is used to determine the status a Reading needs to achieve to be cleaned from tha dataBuffer.
+ */
+void dataCleaning(ReadingStatus cleanable, int millis) {
+    while (true) {
+        datalock.lock();
+        auto it = dataBuffer.begin();
+        while (it != dataBuffer.end()) {
+            if (it->status == cleanable) {
+                it = dataBuffer.erase(it);
+            } else it++;
+        }
+        datalock.unlock();
+        // Timing is not crucial for cleanup.
+        this_thread::sleep_for(chrono::milliseconds(millis));
+    }
+}
+
 void dataTransfer(int millis) {
     while(true) {
         datalock.lock();
-        string toSend = generateReadingListJson(unsentData);
-        unsentData.clear();
+
+        string toSend = "[";
+        bool comma = false;
+        for (int i = 0; i < dataBuffer.size(); i++) {
+            if (!dataBuffer[i].status.sent) {
+                if (comma) toSend+= ","; else comma = true; // Skip the first comma.
+                toSend += dataBuffer[i].toJson();
+            }
+        }
+        toSend += "]";
+
         datalock.unlock();
         sendData(toSend);
         cout << "Sending" << "\n";
@@ -217,13 +263,15 @@ void dataPrinting(int millis) {
         datalock.lock();
 
         string toPrint = "";
-        for (int i = 0; i < unsentData.size(); i++) {
-            toPrint += unsentData[i].toJson() + "\n";
+        for (int i = 0; i < dataBuffer.size(); i++) {
+            if (!dataBuffer[i].status.printed) {
+                toPrint += dataBuffer[i].toJson() + "\n";
+            }
         }
-        unsentData.clear();
         datalock.unlock();
 
         cout << toPrint;
+        // Timing is not crucial.
         this_thread::sleep_for(chrono::milliseconds(millis));
     }
 }
@@ -249,7 +297,7 @@ void rpInit() {
 int main() {
 
 
-    rpInit();
+    //rpInit();
 
     FakeSensorTimer FSt;
     PressureSensorTimer PSt;
@@ -262,10 +310,25 @@ int main() {
 
     // Data sending thread
     thread DTthread(dataTransfer, 100);
-    DTthread.join();
+    //DTthread.join();
 
     // Data printing thread
-    //thread DPthread(dataPrinting, 50);
+    thread DPthread(dataPrinting, 50);
     //DPthread.join();
+
+    // Data cleaning thread
+    ReadingStatus cleanable;
+
+    // Choose which actions should be done with each Reading before discarding it.
+    cleanable.analysed = false;
+    cleanable.sent = true;
+    cleanable.printed = true;
+    cleanable.recorded = false;
+
+    thread DCthread(dataCleaning, cleanable, 1000);
+
+
+    while(1);
+
     return 0;
 }
