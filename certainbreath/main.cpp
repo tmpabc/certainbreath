@@ -366,17 +366,26 @@ public:
  */
 class DataPrintingTimer: public CppTimer {
 
+    map<string, float>  latest;
+    vector<string> keys;
+
     void timerEvent() {
         datalock.lock();
 
         string toPrint = "";
-        for (auto &datum : dataBuffer) {
-            if (!datum.status.printed) {
-                toPrint += datum.toJson() + "\n";
-                datum.status.printed = true;
+        for (Reading datum : dataBuffer) {
+            latest[datum.type] = datum.value;
+            if (find(keys.begin(), keys.end(), datum.type) == keys.end()) {
+                keys.push_back(datum.type);
             }
+            datum.status.printed = true;
         }
         datalock.unlock();
+
+        for(int i = 0; i < keys.size(); i++) {
+            cout << keys[i] << ": " << setw(10) << latest[keys[i]] << " | ";
+        }
+        cout << "\n";
     }
 };
 
@@ -509,7 +518,7 @@ void rpInit() {
 int main() {
 
 
-    //rpInit();
+    rpInit();
 
     FakeSensorTimer FSt;
 
@@ -534,7 +543,7 @@ int main() {
     //FSt.start(100 * 1000000);
 
     DataTransferTimer DTt;
-    DTt.start(100 * 1000000);
+    //DTt.start(100 * 1000000);
 
     DataPrintingTimer DPt;
     DPt.start(50 * 1000000);
@@ -547,8 +556,8 @@ int main() {
     ReadingStatus cleanable;
 
     // Choose which actions should be done with each Reading before discarding it.
-    cleanable.analysed = true;
-    cleanable.sent = true;
+    cleanable.analysed = false;
+    cleanable.sent = false;
     cleanable.printed = true;
     cleanable.recorded = false;
 
