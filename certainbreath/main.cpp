@@ -14,6 +14,7 @@
 #include <math.h>
 #include <mutex>
 #include "CppTimer.h"
+#include <algorithm>
 
 
 using namespace std;
@@ -62,6 +63,7 @@ struct ReadingStatus {
                 this->recorded == other.recorded
                 );
     }
+
 };
 
 struct Reading {
@@ -74,6 +76,7 @@ struct Reading {
     string toJson() {
         return "{\"value\":" + to_string(value) + ", \"time\":" + to_string(time) + ", \"type\": \"" + type +"\" }";
     }
+
 };
 
 vector<Reading> dataBuffer; // Buffer to store the readings.
@@ -295,6 +298,88 @@ class DataPrintingTimer: public CppTimer {
     }
 };
 
+class PressureAnalysisTimer: public CppTimer {
+
+    vector<Reading> runningData;
+    unsigned int runningTime;
+    float noBreathingThreshold;
+    float hyperVentilationThreshold;
+
+public:
+    PressureAnalysisTimer(unsigned int runningTime, float noBreathingThreshold, float hyperVentilationThreshold) {
+        this->runningTime = runningTime;
+        this->noBreathingThreshold = noBreathingThreshold;
+        this->hyperVentilationThreshold = hyperVentilationThreshold;
+    }
+
+private:
+    float min() {
+        float min = HUGE_VALF;
+        for (const auto &datum: runningData) {
+            if(datum.value < min) min = datum.value;
+        }
+        return min;
+    }
+
+    float max() {
+        float max = -HUGE_VALF;
+        for (const auto &datum: runningData) {
+            if(datum.value > max) max = datum.value;
+        }
+        return max;
+    }
+
+    float mean() {
+        float sum = 0;
+        for (const auto &datum: runningData) {
+            sum += datum.value;
+        }
+        return sum / runningData.size();
+    }
+
+    float std() {
+        float mu = mean();
+        float res = 0;
+        for (const auto &datum: runningData) {
+            res += pow(datum.value - mu, 2);
+        }
+        return sqrt(res / (runningData.size() - 1));
+    }
+
+
+    void analysePressure() {
+        if(runningData.size() > 2) {
+        }
+    }
+
+public:
+    void timerEvent() {
+        long long now = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
+
+        //Add new data
+        datalock.lock();
+        for (auto &datum : dataBuffer) {
+            if (!datum.status.analysed) {
+                runningData.push_back(datum);
+                datum.status.printed = true;
+            }
+        }
+        datalock.unlock();
+
+        // Filter out data that is too old:
+        auto it = runningData.begin();
+        while (it != runningData.end()) {
+            if (it->time < now - runningTime) {
+                it = runningData.erase(it);
+            } else it++;
+        }
+
+        //Analyse the running data
+        analysePressure();
+    }
+
+};
+
 
 void rpInit() {
     int setupResult = wiringPiSPISetup(CHANNEL, SPEED);
@@ -325,8 +410,8 @@ int main() {
 
     // first number in the multiplication is the milliseconds.
     PSt.start(100 * 1000000);
-    this_thread::sleep_for(chrono::milliseconds(100));
     //TSt.start(300 * 1000000);
+    //FSt.start(100 * 1000000);
 
     DataTransferTimer DTt;
     DTt.start(100 * 1000000);
@@ -339,7 +424,7 @@ int main() {
     ReadingStatus cleanable;
 
     // Choose which actions should be done with each Reading before discarding it.
-    cleanable.analysed = false;
+    cleanable.analysed = true;
     cleanable.sent = true;
     cleanable.printed = true;
     cleanable.recorded = false;
@@ -350,7 +435,8 @@ int main() {
     DCt.start(500 * 1000000);
 
 
-
+    PressureAnalysisTimer PAt(500, 1, 1);
+    PAt.start(1000 * 1000000);
 
     while(1);
 
