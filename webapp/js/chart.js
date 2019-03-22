@@ -9,7 +9,8 @@ function realTimeLineChart() {
   function chart(selection) {
     // Based on https://bl.ocks.org/mbostock/3884955
     selection.each(function(data) {
-      data = ["Pressure", "Temperature"].map(function(c) {
+      var data_types = [...new Set(data.map(d => d.type))].sort();
+      data = data_types.map(function(c) {
         return {
           label: c,
           values: data.filter(d => d.type == c).map(function(d) {
@@ -59,22 +60,16 @@ function realTimeLineChart() {
       var legendEnter = gEnter.append("g")
         .attr("class", "legend")
         .attr("transform", "translate(" + (width-margin.right-margin.left-75) + ",25)");
-      legendEnter.append("rect")
-        .attr("width", 50)
-        .attr("height", 75)
-        .attr("fill", "#ffffff")
-        .attr("fill-opacity", 0.7);
-      legendEnter.selectAll("text")
-        .data(data).enter()
-        .append("text")
-          .attr("y", function(d, i) { return (i*20) + 25; })
-          .attr("x", 5)
-          .attr("fill", function(d) { return z(d.label); });
+
 
       var svg = selection.select("svg");
       svg.attr('width', width).attr('height', height);
       var g = svg.select("g")
         .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+      g.selectAll(".data").data(data).enter()
+          .append("path")
+            .attr("class", "data");
 
       g.select("g.axis.x")
         .attr("transform", "translate(0," + (height-margin.bottom-margin.top) + ")")
@@ -102,12 +97,23 @@ function realTimeLineChart() {
         .attr("d", function(d) { return line(d.values); })
         .attr("transform", null);
 
-      g.selectAll("g .legend text")
+
+      var legend = d3.select(this).select("g .legend");
+      legend.selectAll("text")
+          .data(data)
+          .enter()
+          .append("text")
+          .attr("y", function(d, i) { return (i*20) + 25; })
+          .attr("x", 5)
+          .attr("fill", function(d) { return z(d.label); });
+
+
+      legend.selectAll("text")
         .data(data)
         .text(function(d) {
           return d.label.toUpperCase() + ": " + d.values[d.values.length-1].value;
         })
-        .attr("transform", "translate(-120, 0)");
+        .attr("transform", "translate(-200, 0)");
 
       // For transitions https://bl.ocks.org/mbostock/1642874
       function tick() {

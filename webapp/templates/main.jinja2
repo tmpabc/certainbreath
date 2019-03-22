@@ -10,72 +10,67 @@
     body {
         font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
     }
-    #chart {
-      max-width: 600px;
-      max-height: 400px;
+    #chart_pressure {
+        max-width: 600px;
+        max-height: 400px;
+    }
+    #chart_temperature {
+        max-width: 600px;
+        max-height: 400px;
+        position: relative;
     }
     </style>
   </head>
   <body>
-    <div id="chart"></div>
+    <div id="chart_pressure"></div>
+    <div id="chart_temperature"></div>
     <script src="js/chart.js"></script>
     <script>
-    var lineArr = [];
+    var pressureArr = [];
+    var temperatureArr = [];
     var MAX_LENGTH = 100;
     var duration = 500;
-    var chart = realTimeLineChart();
-    chart.duration(500);
+    var pressureChart = realTimeLineChart();
+    var temperatureChart = realTimeLineChart();
+    pressureChart.duration(duration);
+    temperatureChart.duration(duration);
 
-    var socket = new WebSocket("{{wsURL}}")
+    var socket = new WebSocket("{{wsURL}}");
     socket.onmessage = function(event) {
 
       var msg = JSON.parse(event.data);
 
-      msg.forEach(x => x.time = new Date(x.time))
-      lineArr.push(...msg);
+      msg.forEach(x => x.time = new Date(x.time));
 
-      if (lineArr.length > MAX_LENGTH) {
-        lineArr = lineArr.slice(lineArr.length - MAX_LENGTH);
+      pressureArr.push(...msg.filter(d => d.type.includes("Pressure")));
+      temperatureArr.push(...msg.filter(d => d.type.includes("Temperature")));
+
+      if (pressureArr.length > MAX_LENGTH) {
+        pressureArr = pressureArr.slice(pressureArr.length - MAX_LENGTH);
+      }
+      if (temperatureArr.length > MAX_LENGTH) {
+        temperatureArr = temperatureArr.slice(temperatureArr.length - MAX_LENGTH);
       }
 
-      console.log("data", lineArr);
-      d3.select("#chart").datum(lineArr).call(chart);
-      }
-
-    function randomNumberBounds(min, max) {
-      return Math.floor(Math.random() * max) + min;
-    }
-
-    function seedData() {
-      var now = new Date();
-      for (var i = 0; i < MAX_LENGTH; ++i) {
-        lineArr.push({
-          time: new Date(now.getTime() - ((MAX_LENGTH - i) * duration)),
-          value: 0,
-          type: "Pressure"
-        });
-        lineArr.push({
-          time: new Date(now.getTime() - ((MAX_LENGTH - i) * duration)),
-          value: 0,
-          type: "Temperature"
-        });
-      }
-    }
-
-
+      d3.select("#chart_pressure").datum(pressureArr).call(pressureChart);
+      d3.select("#chart_temperature").datum(temperatureArr).call(temperatureChart);
+      };
 
     function resize() {
-      if (d3.select("#chart svg").empty()) {
+      if (d3.select("#chart_pressure svg").empty() || d3.select("#chart_temperature svg").empty()) {
         return;
       }
-      chart.width(+d3.select("#chart").style("width").replace(/(px)/g, ""));
-      d3.select("#chart").call(chart);
+      pressureChart.width(+d3.select("#chart_pressure").style("width").replace(/(px)/g, ""));
+      temperatureChart.width(+d3.select("#chart_temperature").style("width").replace(/(px)/g, ""));
+
+      d3.select("#chart_pressure").call(pressureChart);
+      d3.select("#chart_temperature").call(temperatureChart);
     }
 
     document.addEventListener("DOMContentLoaded", function() {
-      seedData();
       //window.setInterval(updateData, 500);
-      d3.select("#chart").datum(lineArr).call(chart);
+      d3.select("#chart_pressure").datum(pressureArr).call(pressureChart);
+      d3.select("#chart_temperature").datum(temperatureArr).call(temperatureChart);
       d3.select(window).on('resize', resize);
     });
     </script>
