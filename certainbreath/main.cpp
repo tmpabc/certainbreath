@@ -14,6 +14,11 @@
 #include <math.h>
 #include <mutex>
 #include "CppTimer.h"
+#include <map>
+#include <algorithm>
+#include <iomanip>
+#include <fstream>
+
 
 
 using namespace std;
@@ -31,8 +36,9 @@ unsigned char BUFFER[2]; // 2 bytes is enough to get the 10 bits from the ADC.
 //static const float AMP_GAIN = 1.33;
 static const float AMP_GAIN = 1.5;
 
-//static const string wsURL = "ws://127.0.0.1:8080/ws";
-static const string wsURL = "ws://certainbreath.herokuapp.com/ws";
+//static const string wsURL = "ws://0.0.0.0:5000/ws";
+//static const string wsURL = "ws://certainbreath.herokuapp.com/ws";
+static const string wsURL = "ws://192.168.1.146:5123/ws";
 
 using easywsclient::WebSocket;
 WebSocket::pointer webSocket;
@@ -71,7 +77,7 @@ struct Reading {
 vector<Reading> unsentData;
 
 // for 13bit ADC
-Reading getVoltage() {
+Reading getVoltage_13() {
     wiringPiSPIDataRW(CHANNEL, BUFFER, 2); // Read 2 bytes.
 
     int bin = (BUFFER[0]& 0x0F) * 256 + BUFFER[1];
@@ -86,12 +92,13 @@ Reading getVoltage() {
 }
 
 // for 10 bit ADC
-Reading getVoltage_10() {
+Reading getVoltage() {
     wiringPiSPIDataRW(CHANNEL, BUFFER, 2); // Read 2 bytes.
 
     // We take the last 5 bits from the first byte and first 5 bits from the second byte
     // according to the ADC data sheet.
-    int bin = (BUFFER[0] << 3 >> 3) * 32 + (BUFFER[1] >> 3);
+    //int bin = (BUFFER[0] << 3 >> 3) * 32 + (BUFFER[1] >> 3);
+    int bin = (BUFFER[0] & 0x1F) * 32 + (BUFFER[1] >> 3);
 
 
     float value = bin / (float)1024 * REF_V; // convert the bin number to the voltage value.
@@ -208,8 +215,8 @@ public:
         digitalWrite(MPPIN2, this->pin2);
         digitalWrite(MPPIN3, this->pin3);
         digitalWrite(MPPIN4, this->pin4);
-        //Reading r = getTemperature(getVoltage());
-        Reading r = getVoltage();
+        Reading r = getTemperature(getVoltage());
+        //Reading r = getVoltage();
         if (this->type != "") {
             r.type = this->type;
         }
@@ -291,17 +298,45 @@ void dataTransfer(int millis) {
 
 
 void dataPrinting(int millis) {
+
+    map<string, float>  latest;
+    vector<string> keys;
+
     while(true) {
         datalock.lock();
 
         string toPrint = "";
         for (int i = 0; i < unsentData.size(); i++) {
-            toPrint += unsentData[i].toJson() + "\n";
+            latest[unsentData[i].type] = unsentData[i].value;
+            if (find(keys.begin(), keys.end(), unsentData[i].type) == keys.end()) {
+                keys.push_back(unsentData[i].type);
+            }
         }
         unsentData.clear();
         datalock.unlock();
 
-        cout << toPrint;
+        for(int i = 0; i < keys.size(); i++) {
+            cout << keys[i] << ": " << setw(10) << latest[keys[i]] << " | ";
+        }
+        cout << "\n";
+        this_thread::sleep_for(chrono::milliseconds(millis));
+    }
+}
+
+
+void dataRecording(string filename, int millis) {
+
+    ofstream file(filename);
+
+    while(true) {
+        datalock.lock();
+
+        for (int i = 0; i < unsentData.size(); i++) {
+            file << unsentData[i].toJson() << "\n";
+        }
+        unsentData.clear();
+        datalock.unlock();
+
         this_thread::sleep_for(chrono::milliseconds(millis));
     }
 }
@@ -339,16 +374,17 @@ int main() {
     //PressureSensorTimer PSt_right(LOW, LOW, LOW, HIGH, "Pressure_right");
 
     //PCB
-    PressureSensorTimer PSt_left(HIGH, HIGH, LOW, HIGH, "Pressure_left");
+    PressureSensorTimer PSt_left(HIGH, HIGH, LOW, HIGH, "Pressure");
     //                      A1 A0 A2 EN
-    TempSensorTimer TSt_top(LOW, LOW, HIGH, HIGH, "Temperature_top");
+    TempSensorTimer TSt_top(LOW, LOW, HIGH, HIGH, "Temperature");
 
     //Breadboard
     //TempSensorTimer TSt_top(HIGH, LOW, HIGH, HIGH, "Temperature_top");
     //TempSensorTimer TSt_bottom(HIGH, HIGH, HIGH, HIGH, "Temperature_bottom");
 
     // first number in the multiplication is the milliseconds.
-    //PSt_left.start(100 * 1000000);
+    //
+    PSt_left.start(100 * 1000000);
     this_thread::sleep_for(chrono::milliseconds(50));
     //PSt_right.start(100 * 1000000);
     this_thread::sleep_for(chrono::milliseconds(50));
@@ -364,5 +400,9 @@ int main() {
     // Data printing thread
     thread DPthread(dataPrinting, 50);
     DPthread.join();
+
+    //thread DRthread(dataRecording, "data2.txt", 100);
+    //DRthread.join();
+
     return 0;
 }
