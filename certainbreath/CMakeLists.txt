@@ -4,7 +4,7 @@ project(certainbreath)
 set(CMAKE_CXX_STANDARD 14)
 
 
-add_executable(certainbreath.out main.cpp)
+add_executable(certainbreath.out main.cpp data_structures.h utils.h web_comm.h sensor_timers.h data_handling_timers.h analysis_timers.h)
 
 find_library(wiringPi_LIB wiringPi)
 find_library(crypt_LIB crypt)
