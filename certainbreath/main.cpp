@@ -32,6 +32,10 @@ static const int SPEED = 500000;
 unsigned char BUFFER[2]; // 2 bytes is enough to get the 10 bits from the ADC.
 
 
+// Define alert types
+static const string NOBREATHINGALERT = "noB";
+static const string HYPERVALERT = "hyperV";
+
 //static const float AMP_GAIN = 1.33;
 static const float AMP_GAIN = 1.5;
 
@@ -366,7 +370,7 @@ public:
  */
 class DataPrintingTimer: public CppTimer {
 
-    map<string, float>  latest;
+    map<string, Reading>  latest;
     vector<string> keys;
 
     void timerEvent() {
@@ -375,8 +379,8 @@ class DataPrintingTimer: public CppTimer {
         string toPrint = "";
         for (Reading datum : dataBuffer) {
             if(!datum.status.printed) {
-                latest[datum.type] = datum.value;
-            } else continue;
+                latest[datum.type] = datum;
+            }
             if (find(keys.begin(), keys.end(), datum.type) == keys.end()) {
                 keys.push_back(datum.type);
             }
@@ -384,8 +388,18 @@ class DataPrintingTimer: public CppTimer {
         }
         datalock.unlock();
 
+        // Clean keys that are older than 600ms. Need this to have up to date information on alerts.
+        auto it = latest.begin();
+        long long now = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
+
+        while (it != latest.end()) {
+            if (it->second.time < now - 600) {
+                latest.erase(it);
+            } else it++;
+        }
+
         for(auto &key: keys) {
-            cout << key << ": " << setw(10) << latest[key] << " | ";
+            cout << key << ": " << setw(10) << latest[key].value << " | ";
         }
         cout << "\n";
     }
@@ -484,16 +498,17 @@ private:
 
         if (breathingFreq < noBreathingThreshold) {
             // No breathing detected
-            alert("no breathing");
+            alert(NOBREATHINGALERT);
         } else if (breathingFreq > hyperVentilationThreshold) {
             // Hyperventilation detected.
-            alert("hyperventilation");
+            alert(HYPERVALERT);
         }
     }
 
-    void alert(string value) {
+    void alert(string alertType) {
         long long now = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
-        sendData("{\"value\":" + value + ", \"time\":" + to_string(now) + ", \"type\": \"alert\" }");
+        dataBuffer.push_back((Reading) {0, now, alertType});
+
     }
 
 public:
@@ -525,7 +540,7 @@ public:
             } else it++;
         }
 
-        //Analyse the running data
+        //Analyse the running data.
         analysePressure();
     }
 
