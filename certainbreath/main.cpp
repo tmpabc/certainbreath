@@ -374,7 +374,9 @@ class DataPrintingTimer: public CppTimer {
 
         string toPrint = "";
         for (Reading datum : dataBuffer) {
-            latest[datum.type] = datum.value;
+            if(!datum.status.printed) {
+                latest[datum.type] = datum.value;
+            } else continue;
             if (find(keys.begin(), keys.end(), datum.type) == keys.end()) {
                 keys.push_back(datum.type);
             }
@@ -382,8 +384,8 @@ class DataPrintingTimer: public CppTimer {
         }
         datalock.unlock();
 
-        for(int i = 0; i < keys.size(); i++) {
-            cout << keys[i] << ": " << setw(10) << latest[keys[i]] << " | ";
+        for(auto &key: keys) {
+            cout << key << ": " << setw(10) << latest[key] << " | ";
         }
         cout << "\n";
     }
@@ -417,69 +419,105 @@ class PressureAnalysisTimer: public CppTimer {
     unsigned int runningTime;
     float noBreathingThreshold;
     float hyperVentilationThreshold;
+    float noiseThreshold;
+    float weightThreshold;
 
 public:
-    PressureAnalysisTimer(unsigned int runningTime, float noBreathingThreshold, float hyperVentilationThreshold) {
+    PressureAnalysisTimer(
+            unsigned int runningTime,
+            float noBreathingThreshold,
+            float hyperVentilationThreshold,
+            float noiseThreshold,
+            float weightThreshold) {
         this->runningTime = runningTime;
         this->noBreathingThreshold = noBreathingThreshold;
         this->hyperVentilationThreshold = hyperVentilationThreshold;
+        this->noiseThreshold = noiseThreshold;
+        this->weightThreshold = weightThreshold;
     }
 
 private:
-    float min() {
-        float min = HUGE_VALF;
-        for (const auto &datum: runningData) {
-            if(datum.value < min) min = datum.value;
-        }
-        return min;
-    }
 
-    float max() {
+    Reading maxReading() {
         float max = -HUGE_VALF;
+        Reading maxR;
         for (const auto &datum: runningData) {
-            if(datum.value > max) max = datum.value;
+            if(datum.value > max) {
+                max = datum.value;
+                maxR = datum;
+            }
         }
-        return max;
-    }
-
-    float mean() {
-        float sum = 0;
-        for (const auto &datum: runningData) {
-            sum += datum.value;
-        }
-        return sum / runningData.size();
-    }
-
-    float std() {
-        float mu = mean();
-        float res = 0;
-        for (const auto &datum: runningData) {
-            res += pow(datum.value - mu, 2);
-        }
-        return sqrt(res / (runningData.size() - 1));
+        return maxR;
     }
 
 
     void analysePressure() {
-        if(runningData.size() > 2) {
+        int length = runningData.size();
+
+        // Only do the analysis if we have enough data and the weight on the pad exceeds the threshold.
+        if (length == 0 || runningData[length - 1].value < weightThreshold || runningData[length - 1].time - runningData[0].time < runningTime * 0.7) {
+            return;
         }
+
+        // Calculate the frequency of the breathing:
+        // (We are assuming the data is in chronological order.
+
+        int spikes = 0;
+        float lastSpike = 0;
+        float lastVal = 0;
+        bool lastChangeUp = false;
+
+        // Count the "spikes" in the running data.
+        for (auto &datum : runningData) {
+
+            bool upSpike = lastChangeUp && lastVal > datum.value;
+            bool downSpike = !lastChangeUp && lastVal < datum.value;
+            bool spikeDiff = abs(lastSpike - datum.value) > noiseThreshold;
+
+            // Count the spike if it's of sufficient difference from the last one.
+            if ((upSpike || downSpike) && spikeDiff) {
+                spikes++;
+            }
+        }
+
+        float breathingFreq = 1000.f * spikes / runningTime / 2; // Two spikes per one breath. Convert to breaths/sec.
+
+        if (breathingFreq < noBreathingThreshold) {
+            // No breathing detected
+            alert("no breathing");
+        } else if (breathingFreq > hyperVentilationThreshold) {
+            // Hyperventilation detected.
+            alert("hyperventilation");
+        }
+    }
+
+    void alert(string value) {
+        long long now = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
+        sendData("{\"value\":" + value + ", \"time\":" + to_string(now) + ", \"type\": \"alert\" }");
     }
 
 public:
     void timerEvent() {
         long long now = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
 
-        //Add new data
+
         datalock.lock();
+        // Need to find which sensor provides higher measurements.
+        // We only add measurements of the sensor that provides the max value (i.e. max pressure).
+
+        string maxType = maxReading().type;
+
+        //Add new data
         for (auto &datum : dataBuffer) {
-            if (!datum.status.analysed) {
+            if (!datum.status.analysed && datum.type == maxType) {
                 runningData.push_back(datum);
-                datum.status.printed = true;
             }
+            datum.status.analysed = true; // We won't need to analyse anything else.
         }
         datalock.unlock();
 
-        // Filter out data that is too old:
+
+        // Filter out data that is too old from the all runningData.
         auto it = runningData.begin();
         while (it != runningData.end()) {
             if (it->time < now - runningTime) {
@@ -552,7 +590,7 @@ int main() {
     //DRt.start(100 * 1000000);
 
 
-    // Data cleaning thread
+    // Data cleaning thread;
     ReadingStatus cleanable;
 
     // Choose which actions should be done with each Reading before discarding it.
@@ -565,7 +603,7 @@ int main() {
     DCt.start(500 * 1000000);
 
 
-    PressureAnalysisTimer PAt(500, 1, 1);
+    PressureAnalysisTimer PAt(1000, 0.1, 0.7, 0.5, 1);
     PAt.start(1000 * 1000000);
 
     while(1);
