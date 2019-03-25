@@ -1,235 +1,26 @@
-#include <stdio.h>
-#include <iostream>
 #include <wiringPi.h>
 #include <wiringPiSPI.h>
-#include <thread>
 #include <vector>
-#include <chrono>
-#include <curl/curl.h>
-#include <string.h>
-#include "easywsclient.hpp"
-#include "easywsclient.cpp"
-#include <assert.h>
-#include <stdlib.h>
-#include <math.h>
 #include <mutex>
+#include <fstream>
+#include <string>
+#include <iostream>
+
 #include "CppTimer.h"
+#include "data_structures.h"
+#include "utils.h"
+#include "web_comm.h"
+#include "sensor_timers.h"
+#include "data_handling_timers.h"
+#include "analysis_timers.h"
 
 
 using namespace std;
 
-static const float REF_V = 3.3; // Reference voltage to the ADC.
-
-// channel is the chip select pin. 0 or 1 depending on how the device is connected to the RPi.
-static const int CHANNEL = 0;
-// SPI communication speed.
-static const int SPEED = 500000;
-// SPI communication buffer.
-unsigned char BUFFER[2]; // 2 bytes is enough to get the 10 bits from the ADC.
 
 
-static const float AMP_GAIN = 1.33;
-
-//static const string wsURL = "ws://127.0.0.1:8080/ws";
-static const string wsURL = "ws://certainbreath.herokuapp.com/ws";
-
-using easywsclient::WebSocket;
-WebSocket::pointer webSocket;
-
-static mutex pinslock;
-static mutex wslock;
-static mutex datalock;
-
-static const int MPPIN1 = 2; // Physical 13 // A1
-static const int MPPIN2 = 0; // Physical 11 // A0
-static const int MPPIN3 = 3; // Physical 15 // A2
-static const int MPPIN4 = 7; // Physical 7  // EN
-
-
-struct Reading {
-    float value;
-    long long time;
-    string type;
-
-    string toJson() {
-        return "{\"value\":" + to_string(value) + ", \"time\":" + to_string(time) + ", \"type\": \"" + type +"\" }";
-    }
-};
-
-vector<Reading> unsentData;
-
-
-Reading getVoltage() {
-    wiringPiSPIDataRW(CHANNEL, BUFFER, 2); // Read 2 bytes.
-
-    // We take the last 5 bits from the first byte and first 5 bits from the second byte
-    // according to the ADC data sheet.
-    int bin = (BUFFER[0] << 3 >> 3) * 32 + (BUFFER[1] >> 3);
-
-
-    float value = bin / (float)1024 * REF_V; // convert the bin number to the voltage value.
-    // Get milliseconds since epoch.
-    long long time = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
-
-    return (Reading) {value, time, "Voltage"};
-}
-
-/*
- * Function to get the force in grams from given by the voltage reading from a FSR sensor.
- */
-Reading getForce(Reading voltage) {
-
-    // log(F) = a*log(r) + b
-
-    float v_in = voltage.value / AMP_GAIN;
-    float r1 = 2200;
-
-    // Obtained by 1st degree polynomial fit to log(F) vs log(r)
-    float a = -1.3077116639139494;
-    float b = 7.141611411251033;
-
-    // R_fsr
-    //float r = (r1 * v_in) / (3.3 - v_in);
-    float r = r1 * (3.3 - v_in) / v_in;
-
-    float F = exp(log(r) * a + b);
-
-    //return (Reading) {F, voltage.time, "Pressure"};
-    return (Reading) {F, voltage.time, "Pressure"};
-}
-
-/*
- * Function to get the temperature in Celsius given by the voltage reading from a termistor.
- */
-Reading getTemperature(Reading voltage) {
-
-    float v_in = voltage.value / AMP_GAIN;
-
-    float r2 = 6800;
-    float r0 = 10000;
-    //float r_th = (r2 * v_in) / (3.3 - v_in);
-    float r_th = r2 * (3.3 - v_in) / v_in;
-
-    float t_0 = 298;
-    float beta = 3977;
-
-
-    float t_K = (t_0 * beta) / (t_0 * log(r_th / r0) + beta);
-
-    float t_C = t_K - 273.15;
-
-    return (Reading) {t_C, voltage.time, "Temperature"};
-}
-
-Reading getRandomReading() {
-    long long time = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
-
-    return (Reading) {(float)(rand() % 330) / 100, time};
-}
-
-
-class PressureSensorTimer: public CppTimer {
-
-    void timerEvent() {
-        pinslock.lock();
-        digitalWrite(MPPIN1, LOW);
-        digitalWrite(MPPIN2, LOW);
-        digitalWrite(MPPIN3, LOW);
-        digitalWrite(MPPIN4, HIGH);
-        Reading r = getForce(getVoltage());
-        pinslock.unlock();
-        datalock.lock();
-        unsentData.push_back(r);
-        datalock.unlock();
-    }
-};
-
-class TempSensorTimer: public CppTimer {
-
-    void timerEvent() {
-        pinslock.lock();
-        digitalWrite(MPPIN1, LOW);
-        digitalWrite(MPPIN2, HIGH);
-        digitalWrite(MPPIN3, LOW);
-        digitalWrite(MPPIN4, HIGH);
-        Reading r = getTemperature(getVoltage());
-        pinslock.unlock();
-        datalock.lock();
-        unsentData.push_back(r);
-        datalock.unlock();
-    }
-};
-
-class FakeSensorTimer: public CppTimer {
-
-    void timerEvent() {
-
-        Reading r = getRandomReading();
-        datalock.lock();
-        unsentData.push_back(r);
-        datalock.unlock();
-    }
-};
-
-string generateReadingListJson(vector<Reading> readings) {
-    string toSend = "[";
-    for (int i = 0; i < readings.size(); i++) {
-        toSend += readings[i].toJson();
-        if (i != readings.size() - 1) toSend += ",";
-    }
-    toSend += "]";
-
-    return toSend;
-}
-
-void sendData(string data) {
-    wslock.lock();
-
-    if(!webSocket || webSocket->getReadyState() != WebSocket::readyStateValues::OPEN) {
-        while(true) {
-            webSocket = WebSocket::from_url(wsURL);
-            this_thread::sleep_for(chrono::seconds(1));
-            if (webSocket) break;
-        }
-    }
-
-    webSocket->send(data);
-    webSocket->poll();
-    wslock.unlock();
-}
-
-void dataTransfer(int millis) {
-    while(true) {
-        datalock.lock();
-        string toSend = generateReadingListJson(unsentData);
-        unsentData.clear();
-        datalock.unlock();
-        sendData(toSend);
-        cout << "Sending" << "\n";
-        // Timing is not crucial for network communications since there are no guarantees anyway.
-        this_thread::sleep_for(chrono::milliseconds(millis));
-    }
-}
-
-
-void dataPrinting(int millis) {
-    while(true) {
-        datalock.lock();
-
-        string toPrint = "";
-        for (int i = 0; i < unsentData.size(); i++) {
-            toPrint += unsentData[i].toJson() + "\n";
-        }
-        unsentData.clear();
-        datalock.unlock();
-
-        cout << toPrint;
-        this_thread::sleep_for(chrono::milliseconds(millis));
-    }
-}
-
-void rpInit() {
-    int setupResult = wiringPiSPISetup(CHANNEL, SPEED);
+void rpInit(int channel, int speed, vector<int> outputPins) {
+    int setupResult = wiringPiSPISetup(channel, speed);
 
     if (setupResult == -1) cout << "Error setting up wiringPi for SPi";
     else printf("wiringPi SPI is working!\n");
@@ -238,34 +29,121 @@ void rpInit() {
     if (setupResult == -1) cout << "Error setting up wiringPi for GPIO";
     else printf("wiringPi GPIO is working!\n");
 
-    pinMode (MPPIN1, OUTPUT);
-    pinMode (MPPIN2, OUTPUT);
-    pinMode (MPPIN3, OUTPUT);
-    pinMode (MPPIN4, OUTPUT);
+    for (auto pin : outputPins) {
+        pinMode(pin, OUTPUT);
+    }
 }
 
 
 
 int main() {
 
+    vector<Reading> dataBuffer; // Buffer to store the readings.
+    mutex pinslock;
+    mutex datalock;
 
-    rpInit();
 
-    FakeSensorTimer FSt;
-    PressureSensorTimer PSt;
-    TempSensorTimer TSt;
+    // Read the configuration file.
+    map<string, string> config;
 
-    // first number in the multiplication is the milliseconds.
-    PSt.start(100 * 1000000);
-    this_thread::sleep_for(chrono::milliseconds(100));
-    //TSt.start(300 * 1000000);
+    ifstream configFile("../config.cfg");
+    string line;
+    while(getline(configFile, line)) {
+        if(line.empty() || line[0] == '#') continue;
+        stringstream strs(line);
+        string key;
+        getline(strs, key, '=');
+        string value;
+        getline(strs, value);
+        cout << value << endl;
+        config[key] = value;
+    }
 
-    // Data sending thread
-    thread DTthread(dataTransfer, 100);
-    DTthread.join();
+    // A1 A0 A2 EN
+    vector<int> multiplexerPins({stoi(config["MPPIN1"]), stoi(config["MPPIN1"]),
+                                 stoi(config["MPPIN1"]), stoi(config["MPPIN1"])});
 
-    // Data printing thread
-    //thread DPthread(dataPrinting, 50);
-    //DPthread.join();
-    return 0;
+
+    rpInit(stoi(config["SPI_CHANNEL"]), stoi(config["SPEED"]), multiplexerPins);
+
+    FakeSensorTimer FSt(&datalock, &dataBuffer, config["FAKESENSORTYPE"]);
+    if(config.find("FAKESENSORINTERVAL") != config.end()) {
+        FSt.start(stoi(config["FAKESENSORINTERVAL"]) * 1000000);
+    }
+
+    PressureSensorTimer PSt_right(&pinslock, &datalock, &dataBuffer,
+                                  multiplexerPins, vector<int>({stoi(config["PRESSURERIGHTPIN1"]), stoi(config["PRESSURERIGHTPIN2"]),
+                                                                stoi(config["PRESSURERIGHTPIN3"]), stoi(config["PRESSURERIGHTPIN4"])}),
+                                  stof(config["AMPGAIN"]), config["PRESSURERIGHTTYPE"]);
+    if(config.find("PRESSURERIGHTINTERVAL") != config.end()) {
+
+        PSt_right.start(stoi(config["PRESSURERIGHTINTERVAL"]) * 1000000);
+    }
+
+    PressureSensorTimer PSt_left(&pinslock, &datalock, &dataBuffer,
+                                 multiplexerPins, vector<int>({stoi(config["PRESSURELEFTPIN1"]), stoi(config["PRESSURELEFTPIN2"]),
+                                                               stoi(config["PRESSURELEFTPIN3"]), stoi(config["PRESSURELEFTPIN4"])}),
+                                 stof(config["AMPGAIN"]), config["PRESSURELEFTTYPE"]);
+    if(config.find("PRESSURELEFTINTERVAL") != config.end()) {
+
+        PSt_left.start(stoi(config["PRESSURELEFTINTERVAL"]) * 1000000);
+    }
+
+
+    TempSensorTimer TSt_top(&pinslock, &datalock, &dataBuffer,
+                            multiplexerPins, vector<int>({stoi(config["TEMPTOPPIN1"]), stoi(config["TEMPTOPPIN2"]),
+                                                          stoi(config["TEMPTOPPIN3"]), stoi(config["TEMPTOPPIN4"])}),
+                            stof(config["AMPGAIN"]));
+    if(config.find("TEMPTOPINTERVAL") != config.end()) {
+
+        TSt_top.start(stoi(config["TEMPTOPINTERVAL"]) * 1000000);
+
+    }
+
+    TempSensorTimer TSt_bot(&pinslock, &datalock, &dataBuffer,
+                            multiplexerPins, vector<int>({stoi(config["TEMPBOTPIN1"]), stoi(config["TEMPBOTPIN2"]),
+                                                          stoi(config["TEMPBOTPIN3"]), stoi(config["TEMPBOTPIN4"])}),
+                            stof(config["AMPGAIN"]));
+    if(config.find("TEMPBOTINTERVAL") != config.end()) {
+
+        TSt_bot.start(stoi(config["TEMPBOTINTERVAL"]) * 1000000);
+
+    }
+
+    DataTransferTimer DTt(config["URL"], &datalock, &dataBuffer);
+    if(config.find("DATATRANSFERINTERVAL") != config.end()) {
+        DTt.start(stoi(config["DATATRANSFERINTERVAL"]) * 1000000);
+    }
+
+    DataPrintingTimer DPt(&datalock, &dataBuffer);
+    if(config.find("DATAPRINTINGINTERVAL") != config.end()) {
+        DPt.start(stoi(config["DATAPRINTINGINTERVAL"]) * 1000000);
+    }
+
+    DataRecordingTimer DRt(config["DATARECORDINGFILENAME"], &datalock, &dataBuffer);
+    if(config.find("DATARECORDINGINTERVAL") != config.end()) {
+        DRt.start(stoi(config["DATARECORDINGINTERVAL"]) * 1000000);
+    }
+
+    PressureAnalysisTimer PAt(&datalock, &dataBuffer, 1000, 0.1, 0.7, 0.5, 1);
+    if(config.find("PRESSUREANALYSISINTERVAL") != config.end()) {
+        PAt.start(stoi(config["PRESSUREANALYSISINTERVAL"]) * 1000000);
+    }
+
+    // Data cleaning thread;
+    ReadingStatus cleanable;
+
+    // Choose which actions should be done with each Reading before discarding it.
+    cleanable.analysed = config.find("PRESSUREANALYSISINTERVAL") != config.end();
+    cleanable.sent = config.find("DATATRANSFERINTERVAL") != config.end();
+    cleanable.printed = config.find("DATAPRINTINGINTERVAL") != config.end();
+    cleanable.recorded = config.find("DATARECORDINGINTERVAL") != config.end();
+
+    DataCleanUpTimer DCt(cleanable, &datalock, &dataBuffer);
+    DCt.start(stoi(config["DATACLEANINTERVAL"]) * 1000000);
+
+
+    while(1) {
+        this_thread::sleep_for(chrono::seconds(1));
+    }
 }
