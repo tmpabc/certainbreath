@@ -55,7 +55,6 @@ int main() {
         getline(strs, key, '=');
         string value;
         getline(strs, value);
-        cout << value << endl;
         config[key] = value;
     }
 
@@ -64,7 +63,9 @@ int main() {
                                  stoi(config["MPPIN1"]), stoi(config["MPPIN1"])});
 
 
-    rpInit(stoi(config["SPI_CHANNEL"]), stoi(config["SPEED"]), multiplexerPins);
+    if (config["RPIINIT"] == "true") {
+        rpInit(stoi(config["SPI_CHANNEL"]), stoi(config["SPEED"]), multiplexerPins);
+    }
 
     FakeSensorTimer FSt(&datalock, &dataBuffer, config["FAKESENSORTYPE"]);
     if(config.find("FAKESENSORINTERVAL") != config.end()) {

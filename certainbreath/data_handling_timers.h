@@ -51,7 +51,7 @@ public:
 
         // Only send if there's data.
         if (toSend.length() > 2) {
-            cout << "Sending" << "\n";
+            //cout << "Sending" << "\n";
             sendData(toSend, url);
         }
 
