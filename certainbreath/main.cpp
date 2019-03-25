@@ -125,7 +125,13 @@ int main() {
         DRt.start(stoi(config["DATARECORDINGINTERVAL"]) * 1000000);
     }
 
-    PressureAnalysisTimer PAt(&datalock, &dataBuffer, 1000, 0.1, 0.7, 0.5, 1);
+    PressureAnalysisTimer PAt(&datalock, &dataBuffer,
+            stoi(config["PRESSUREANALYSISRUNNINGTIME"]),
+            stoi(config["PRESSUREANALYSISNOBREATHINGTHRESHOLD"]),
+            stoi(config["PRESSUREANALYSISHYPERVENTILATIONTHRESHOLD"]),
+            stoi(config["PRESSUREANALYSISNOISETHRESHOLD"]),
+            stoi(config["PRESSUREANALYSISWEIGHTTHRESHOLD"]));
+
     if(config.find("PRESSUREANALYSISINTERVAL") != config.end()) {
         PAt.start(stoi(config["PRESSUREANALYSISINTERVAL"]) * 1000000);
     }
