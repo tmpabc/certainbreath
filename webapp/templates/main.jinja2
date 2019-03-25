@@ -22,6 +22,10 @@
     </style>
   </head>
   <body>
+    <div id="alerts">
+        <h1 id="no_breathing_text"></h1>
+        <h1 id="hyperventilation_text"></h1>
+    </div>
     <div id="chart_pressure"></div>
     <div id="chart_temperature"></div>
     <script src="js/chart.js"></script>
@@ -35,6 +39,9 @@
     pressureChart.duration(duration);
     temperatureChart.duration(duration);
 
+    var lastNoBreathingAlert;
+    var lastHyperVentilationAlert;
+
     var socket = new WebSocket("{{wsURL}}");
     socket.onmessage = function(event) {
 
@@ -44,6 +51,18 @@
 
       pressureArr.push(...msg.filter(d => d.type.includes("Pressure")));
       temperatureArr.push(...msg.filter(d => d.type.includes("Temperature")));
+
+      var noBreathingAlerts = msg.filter(d => d.type == "noB");
+      if (noBreathingAlerts.length > 0) {
+          lastNoBreathingAlert = noBreathingAlerts[noBreathingAlerts.length - 1];
+          alertNoBreathing(true);
+      }
+
+      var hyperVentilationAlerts = msg.filter(d => d.type == "hyperV");
+      if (hyperVentilationAlerts.length > 0) {
+          lastHyperVentilationAlert = hyperVentilationAlerts[hyperVentilationAlerts.length - 1];
+          alertHyperVentilation(true);
+      }
 
       if (pressureArr.length > MAX_LENGTH) {
         pressureArr = pressureArr.slice(pressureArr.length - MAX_LENGTH);
@@ -55,6 +74,32 @@
       d3.select("#chart_pressure").datum(pressureArr).call(pressureChart);
       d3.select("#chart_temperature").datum(temperatureArr).call(temperatureChart);
       };
+
+    function alertNoBreathing(enable) {
+        if (enable) {
+            d3.select("#no_breathing_text").text("No breathing detected!");
+        } else {
+            d3.select("#no_breathing_text").text("");
+        }
+
+    }
+
+    function alertHyperVentilation(enable) {
+        if (enable) {
+            d3.select("#hyperventilation_text").text("Hyper ventilation detected!");
+        } else {
+            d3.select("#hyperventilation_text").text("");
+        }
+    }
+
+    function retireAlerts() {
+        if (typeof lastHyperVentilationAlert !== 'undefined' && +lastHyperVentilationAlert.time < (new Date()).getTime() - 1000) {
+            alertHyperVentilation(false);
+        }
+        if (typeof lastNoBreathingAlert !== 'undefined' && +lastNoBreathingAlert.time < (new Date()).getTime() - 1000) {
+            alertNoBreathing(false);
+        }
+    }
 
     function resize() {
       if (d3.select("#chart_pressure svg").empty() || d3.select("#chart_temperature svg").empty()) {
@@ -68,7 +113,7 @@
     }
 
     document.addEventListener("DOMContentLoaded", function() {
-      //window.setInterval(updateData, 500);
+      window.setInterval(retireAlerts, 500);
       d3.select("#chart_pressure").datum(pressureArr).call(pressureChart);
       d3.select("#chart_temperature").datum(temperatureArr).call(temperatureChart);
       d3.select(window).on('resize', resize);
