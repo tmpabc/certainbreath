@@ -18,6 +18,64 @@ static const string HYPERVALERT = "hyperV";
 
 using namespace std;
 
+
+class TemperatureAnalysisTimer: public CppTimer {
+
+    Reading lastTemp;
+    float threshold;
+
+    mutex * datalock;
+    vector<Reading> * dataBuffer;
+    int pin1;
+    int pin2;
+    string key = "Pressure";
+
+public:
+    TemperatureAnalysisTimer(
+            mutex * datalock,
+            vector<Reading> * dataBuffer,
+            float tempThreshold,
+            int motorPin1,
+            int motorPin2
+            ) {
+
+        this->datalock = datalock;
+        this->dataBuffer = dataBuffer;
+        this->threshold = tempThreshold;
+        this->pin1 = motorPin1;
+        this->pin2 = motorPin2;
+
+    }
+
+    void timerEvent() {
+        datalock->lock();
+        for(auto datum : *dataBuffer) {
+            if(datum.type.find(key) != string::npos) {
+                lastTemp = datum;
+            }
+        }
+        datalock->unlock();
+        long long now = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
+        if (lastTemp.value > threshold && now - lastTemp.time < 10000) {
+            startMotors();
+        } else {
+            stopMotors();
+        }
+    }
+
+    void startMotors() {
+        digitalWrite(pin1, 1);
+        digitalWrite(pin2, 1);
+    }
+
+    void stopMotors() {
+        digitalWrite(pin1, 0);
+        digitalWrite(pin2, 0);
+    }
+
+
+};
+
 class PressureAnalysisTimer: public CppTimer {
 
     vector<Reading> runningData;

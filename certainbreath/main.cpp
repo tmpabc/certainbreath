@@ -19,7 +19,7 @@ using namespace std;
 
 
 
-void rpInit(int channel, int speed, vector<int> outputPins) {
+void rpInit(int channel, int speed, vector<int> outputPins, vector<int> motorPins) {
     int setupResult = wiringPiSPISetup(channel, speed);
 
     if (setupResult == -1) cout << "Error setting up wiringPi for SPi";
@@ -30,6 +30,10 @@ void rpInit(int channel, int speed, vector<int> outputPins) {
     else printf("wiringPi GPIO is working!\n");
 
     for (auto pin : outputPins) {
+        pinMode(pin, OUTPUT);
+    }
+
+    for (auto pin : motorPins) {
         pinMode(pin, OUTPUT);
     }
 }
@@ -59,12 +63,15 @@ int main() {
     }
 
     // A1 A0 A2 EN
-    vector<int> multiplexerPins({stoi(config["MPPIN1"]), stoi(config["MPPIN1"]),
-                                 stoi(config["MPPIN1"]), stoi(config["MPPIN1"])});
+    vector<int> multiplexerPins({stoi(config["MPPIN1"]), stoi(config["MPPIN2"]),
+                                 stoi(config["MPPIN3"]), stoi(config["MPPIN4"])});
+
+    vector<int> motorPins({stoi(config["MTPIN1"]), stoi(config["MTPIN2"])});
+
 
 
     if (config["RPIINIT"] == "true") {
-        rpInit(stoi(config["SPI_CHANNEL"]), stoi(config["SPEED"]), multiplexerPins);
+        rpInit(stoi(config["SPI_CHANNEL"]), stoi(config["SPEED"]), multiplexerPins, motorPins);
     }
 
     FakeSensorTimer FSt(&datalock, &dataBuffer, config["FAKESENSORTYPE"]);
@@ -135,6 +142,15 @@ int main() {
 
     if(config.find("PRESSUREANALYSISINTERVAL") != config.end()) {
         PAt.start(stoi(config["PRESSUREANALYSISINTERVAL"]) * 1000000);
+    }
+
+    TemperatureAnalysisTimer TAt(&datalock, &dataBuffer,
+            stof(config["TEMPANALYSISTHRESHOLD"]),
+            motorPins[0],
+            motorPins[1]);
+
+    if(config.find("TEMPANALYSISINTERVAL") != config.end()) {
+        TAt.start(stoi(config["TEMPANALYSISINTERVAL"]) * 1000000);
     }
 
     // Data cleaning thread;
