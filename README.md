@@ -16,6 +16,6 @@ Certain Breath is a infant sleeping monitor that tracks the respiratory rate of 
 
 ## Quick links
 
-[Part list](https://github.com/tmpabc/certainbreath/wiki/Component-List)  
-[Main functionalities](https://github.com/tmpabc/certainbreath/wiki/Device-Functionality)  
-[Release documentation](https://github.com/tmpabc/certainbreath/wiki/Release-documentation)
+1) [Part list](https://github.com/tmpabc/certainbreath/wiki/Component-List)  
+2) [Main functionalities](https://github.com/tmpabc/certainbreath/wiki/Device-Functionality)  
+3) [Wiki page](https://github.com/tmpabc/certainbreath/wiki/)
