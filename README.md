@@ -14,3 +14,8 @@ With Certain Breath we aim to create a simple real-time application to tackle SI
 
 Certain Breath is a infant sleeping monitor that tracks the respiratory rate of the infant using high-sensitivity force sesnors. The data is collected and analysed locally and sent off for external (dev/ web application) visualisation. Parents and people nearby are notified of any abnormalies in the respiratory functions through push-notifications and local means (i.e. LEDs or sound). 
 
+## Quick links
+
+[Part list](https://github.com/tmpabc/certainbreath/wiki/Component-List)
+[Main functionalities](https://github.com/tmpabc/certainbreath/wiki/Device-Functionality)
+[Release documentation](https://github.com/tmpabc/certainbreath/wiki/Release-documentation)
