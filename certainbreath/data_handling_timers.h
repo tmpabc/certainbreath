@@ -119,11 +119,11 @@ public:
         }
         datalock->unlock();
 
-        // Clean keys that are older than 600ms. Need this to have up to date information on alerts.
+        // Clean keys that are older than 2000ms. Need this to have up to date information on alerts.
         long long now = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
         auto it = keys.begin();
         while(it != keys.end()) {
-            if(latest[*it].time < now - 600) {
+            if(latest[*it].time < now - 2000) {
                 it = keys.erase(it);
             } else it++;
         }

@@ -135,10 +135,10 @@ int main() {
 
     PressureAnalysisTimer PAt(&datalock, &dataBuffer,
             stoi(config["PRESSUREANALYSISRUNNINGTIME"]),
-            stoi(config["PRESSUREANALYSISNOBREATHINGTHRESHOLD"]),
-            stoi(config["PRESSUREANALYSISHYPERVENTILATIONTHRESHOLD"]),
-            stoi(config["PRESSUREANALYSISNOISETHRESHOLD"]),
-            stoi(config["PRESSUREANALYSISWEIGHTTHRESHOLD"]));
+            stof(config["PRESSUREANALYSISNOBREATHINGTHRESHOLD"]),
+            stof(config["PRESSUREANALYSISHYPERVENTILATIONTHRESHOLD"]),
+            stof(config["PRESSUREANALYSISNOISETHRESHOLD"]),
+            stof(config["PRESSUREANALYSISWEIGHTTHRESHOLD"]));
 
     if(config.find("PRESSUREANALYSISINTERVAL") != config.end()) {
         PAt.start(stoi(config["PRESSUREANALYSISINTERVAL"]) * 1000000);

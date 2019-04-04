@@ -87,6 +87,11 @@ class PressureAnalysisTimer: public CppTimer {
     mutex * datalock;
     vector<Reading> * dataBuffer;
 
+
+    float lastSpike = 0;
+    float lastVal = 0;
+
+
 public:
     PressureAnalysisTimer(
             mutex * datalock,
@@ -121,10 +126,15 @@ private:
 
 
     void analysePressure() {
+        //cout << "Analysing..." << "\n";
         int length = runningData.size();
 
         // Only do the analysis if we have enough data and the weight on the pad exceeds the threshold.
         if (length == 0 || runningData[length - 1].value < weightThreshold || runningData[length - 1].time - runningData[0].time < runningTime * 0.7) {
+            cout << "Not analysng because of lack af data\n";
+            cout << "Length " << length;
+            if (length != 0)
+            cout << runningData[length - 1].time - runningData[0].time << "\n";
             return;
         }
 
@@ -132,9 +142,8 @@ private:
         // (We are assuming the data is in chronological order.
 
         int spikes = 0;
-        float lastSpike = 0;
-        float lastVal = 0;
         bool lastChangeUp = false;
+
 
         // Count the "spikes" in the running data.
         for (auto &datum : runningData) {
@@ -143,13 +152,21 @@ private:
             bool downSpike = !lastChangeUp && lastVal < datum.value;
             bool spikeDiff = abs(lastSpike - datum.value) > noiseThreshold;
 
+            lastVal = datum.value;
+            lastChangeUp = lastVal < datum.value;
+
+
             // Count the spike if it's of sufficient difference from the last one.
             if ((upSpike || downSpike) && spikeDiff) {
                 spikes++;
+                //cout << "Noise threshold: " << noiseThreshold << "\n";
+                //cout << "Spike diff: " << abs(lastSpike - datum.value) << "\n";
+                lastSpike = datum.value;
             }
         }
 
         float breathingFreq = 1000.f * spikes / runningTime / 2; // Two spikes per one breath. Convert to breaths/sec.
+        cout << "Breathing ferquency: " << breathingFreq << "\n";
 
         if (breathingFreq < noBreathingThreshold) {
             // No breathing detected
@@ -172,7 +189,7 @@ public:
     void timerEvent() {
         long long now = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
 
-        string key = "Pressure";
+        string key = "pressure";
         datalock->lock();
         // Need to find which sensor provides higher measurements.
         // We only add measurements of the sensor that provides the max value (i.e. max pressure).
