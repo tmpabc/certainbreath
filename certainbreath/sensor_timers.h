@@ -22,10 +22,11 @@ class TempSensorTimer: public CppTimer {
     mutex *pinslock, *datalock;
     vector<Reading> *dataBuffer;
     float ampGain;
+    float r2;
 
 public:
     TempSensorTimer(mutex *pinslock, mutex *datalock, vector<Reading> *dataBuffer,
-                    const vector<int> &pins, const vector<int> &pinVals, float ampGain=1.5, string type="Temperature") {
+                    const vector<int> &pins, const vector<int> &pinVals, float ampGain=1.5, float r2 = 11000, string type="Temperature") {
         this->pins=pins;
         this->pinVals=pinVals;
         this->type = type;
@@ -33,13 +34,14 @@ public:
         this->datalock = datalock;
         this->dataBuffer = dataBuffer;
         this->ampGain = ampGain;
+        this->r2 = r2;
     }
 
 
     void timerEvent() {
         pinslock->lock();
         writePins(pins, pinVals);
-        Reading r = getForce(getVoltage(), ampGain);
+        Reading r = getTemperature(getVoltage(), ampGain, r2);
         r.type = this->type;
         pinslock->unlock();
         datalock->lock();

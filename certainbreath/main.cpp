@@ -101,7 +101,7 @@ int main() {
     TempSensorTimer TSt_top(&pinslock, &datalock, &dataBuffer,
                             multiplexerPins, vector<int>({stoi(config["TEMPTOPPIN1"]), stoi(config["TEMPTOPPIN2"]),
                                                           stoi(config["TEMPTOPPIN3"]), stoi(config["TEMPTOPPIN4"])}),
-                            stof(config["AMPGAIN"]));
+                            stof(config["AMPGAIN"]), stof(config["TEMPTOPR2"]), config["TEMPTOPTYPE"]);
     if(config.find("TEMPTOPINTERVAL") != config.end()) {
 
         TSt_top.start(stoi(config["TEMPTOPINTERVAL"]) * 1000000);
@@ -111,7 +111,7 @@ int main() {
     TempSensorTimer TSt_bot(&pinslock, &datalock, &dataBuffer,
                             multiplexerPins, vector<int>({stoi(config["TEMPBOTPIN1"]), stoi(config["TEMPBOTPIN2"]),
                                                           stoi(config["TEMPBOTPIN3"]), stoi(config["TEMPBOTPIN4"])}),
-                            stof(config["AMPGAIN"]));
+                            stof(config["AMPGAIN"]), stof(config["TEMPBOTR2"]), config["TEMPBOTTYPE"]);
     if(config.find("TEMPBOTINTERVAL") != config.end()) {
 
         TSt_bot.start(stoi(config["TEMPBOTINTERVAL"]) * 1000000);

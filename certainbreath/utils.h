@@ -13,7 +13,7 @@ static const float REF_V = 3.3; // Reference voltage to the ADC.
 
 // for 13bit ADC
 // channel is the chip select pin. 0 or 1 depending on how the device is connected to the RPi.
-Reading getVoltage_13(int channel=0) {
+Reading getVoltage(int channel=0) {
     unsigned char buffer[2];
     wiringPiSPIDataRW(channel, buffer, 2); // Read 2 bytes.
 
@@ -25,12 +25,14 @@ Reading getVoltage_13(int channel=0) {
     //float value = (float) bin;
     long long time = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
 
+    //return (Reading) {value, time, "Voltage"};
     return (Reading) {value, time, "Voltage"};
+
 }
 
 // for 10 bit ADC
 // channel is the chip select pin. 0 or 1 depending on how the device is connected to the RPi.
-Reading getVoltage(int channel=0) {
+Reading getVoltage_10(int channel=0) {
     unsigned char buffer[2];
     wiringPiSPIDataRW(channel, buffer, 2); // Read 2 bytes.
 
