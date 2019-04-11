@@ -25,6 +25,7 @@
     <div id="alerts">
         <h1 id="no_breathing_text"></h1>
         <h1 id="hyperventilation_text"></h1>
+        <h1 id="temperature_text"></h1>
     </div>
     <div id="chart_pressure"></div>
     <div id="chart_temperature"></div>
@@ -49,8 +50,8 @@
 
       msg.forEach(x => x.time = new Date(x.time));
 
-      pressureArr.push(...msg.filter(d => d.type.includes("Pressure")));
-      temperatureArr.push(...msg.filter(d => d.type.includes("Temperature")));
+      pressureArr.push(...msg.filter(d => d.type.toLowerCase().includes("pressure")));
+      temperatureArr.push(...msg.filter(d => d.type.toLowerCase().includes("temperature")));
 
       var noBreathingAlerts = msg.filter(d => d.type == "noB");
       if (noBreathingAlerts.length > 0) {
@@ -62,6 +63,11 @@
       if (hyperVentilationAlerts.length > 0) {
           lastHyperVentilationAlert = hyperVentilationAlerts[hyperVentilationAlerts.length - 1];
           alertHyperVentilation(true);
+      }
+      var temperatureAlerts = msg.filter(d => d.type == "highT");
+      if (temperatureAlerts.length > 0) {
+          lastHighTemperatureAlert = temperatureAlerts[temperatureAlerts.length - 1];
+          alertHighTemperature(true);
       }
 
       if (pressureArr.length > MAX_LENGTH) {
@@ -83,6 +89,16 @@
         }
 
     }
+
+    function alertHighTemperature(enable) {
+        if (enable) {
+            d3.select("#temperature_text").text("Fever detected!");
+        } else {
+            d3.select("#temperature_text").text("");
+        }
+
+    }
+
 
     function alertHyperVentilation(enable) {
         if (enable) {
