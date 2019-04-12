@@ -1,6 +1,7 @@
 # Certain Breath
-
-![Certain Breath logo](resources/images/CertainBreath_banner.png)
+<p align="center">
+  <img src="https://github.com/tmpabc/certainbreath/blob/master/resources/images/CertainBreath_wiki.png" align="middle" width=300>
+</p>
 
 ## Introduction
 
