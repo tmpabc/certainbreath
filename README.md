@@ -25,4 +25,4 @@ See our [wiki](https://github.com/tmpabc/certainbreath/wiki/) for more informati
 
 ## Click on the image to watch our demo:
 
-[![Watch the video](resources/images/Main.jpg)](https://www.youtube.com/upload)
+[![Watch the video](resources/images/Main.jpg)](https://youtu.be/7yckkaL0iu4)
