@@ -15,6 +15,7 @@
 // Define alert types
 static const string NOBREATHINGALERT = "noB";
 static const string HYPERVALERT = "hyperV";
+static const string TEMPALERT = "highT";
 
 using namespace std;
 
@@ -26,24 +27,19 @@ class TemperatureAnalysisTimer: public CppTimer {
 
     mutex * datalock;
     vector<Reading> * dataBuffer;
-    int pin1;
-    int pin2;
-    string key = "Pressure";
+    string key = "temperature";
+
 
 public:
     TemperatureAnalysisTimer(
             mutex * datalock,
             vector<Reading> * dataBuffer,
-            float tempThreshold,
-            int motorPin1,
-            int motorPin2
+            float tempThreshold
             ) {
 
         this->datalock = datalock;
         this->dataBuffer = dataBuffer;
         this->threshold = tempThreshold;
-        this->pin1 = motorPin1;
-        this->pin2 = motorPin2;
 
     }
 
@@ -56,23 +52,17 @@ public:
         }
         datalock->unlock();
         long long now = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
-        if (lastTemp.value > threshold && now - lastTemp.time < 10000) {
-            startMotors();
-        } else {
-            stopMotors();
+        if (lastTemp.value > threshold && now - lastTemp.time < 200) {
+            alert(TEMPALERT, lastTemp.value);
         }
     }
+    void alert(const string &alertType, float value) {
+        long long now = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
+        datalock->lock();
+        dataBuffer->push_back((Reading) {value, now, alertType});
+        datalock->unlock();
 
-    void startMotors() {
-        digitalWrite(pin1, 1);
-        digitalWrite(pin2, 1);
     }
-
-    void stopMotors() {
-        digitalWrite(pin1, 0);
-        digitalWrite(pin2, 0);
-    }
-
 
 };
 
@@ -91,6 +81,10 @@ class PressureAnalysisTimer: public CppTimer {
     float lastSpike = 0;
     float lastVal = 0;
 
+    int pin1;
+    int pin2;
+
+    bool alerting = false;
 
 public:
     PressureAnalysisTimer(
@@ -100,7 +94,9 @@ public:
             float noBreathingThreshold,
             float hyperVentilationThreshold,
             float noiseThreshold,
-            float weightThreshold) {
+            float weightThreshold,
+            int pin1,
+            int pin2) {
         this->runningTime = runningTime;
         this->noBreathingThreshold = noBreathingThreshold;
         this->hyperVentilationThreshold = hyperVentilationThreshold;
@@ -108,6 +104,8 @@ public:
         this->weightThreshold = weightThreshold;
         this->datalock = datalock;
         this->dataBuffer = dataBuffer;
+        this->pin1 = pin1;
+        this->pin2 = pin2;
     }
 
 private:
@@ -131,7 +129,7 @@ private:
 
         // Only do the analysis if we have enough data and the weight on the pad exceeds the threshold.
         if (length == 0 || runningData[length - 1].value < weightThreshold || runningData[length - 1].time - runningData[0].time < runningTime * 0.7) {
-            cout << "Not analysng because of lack af data\n";
+            cout << "Not analysng because of lack af data or lack of threshold\n";
             cout << "Length " << length;
             if (length != 0)
             cout << runningData[length - 1].time - runningData[0].time << "\n";
@@ -171,10 +169,16 @@ private:
         if (breathingFreq < noBreathingThreshold) {
             // No breathing detected
             alert(NOBREATHINGALERT, breathingFreq);
+            alerting = true;
         } else if (breathingFreq > hyperVentilationThreshold) {
             // Hyperventilation detected.
             alert(HYPERVALERT, breathingFreq);
+            alerting = true;
+        } else {
+            alerting = false;
         }
+
+        checkMotors();
     }
 
     void alert(const string &alertType, float value) {
@@ -183,6 +187,23 @@ private:
         dataBuffer->push_back((Reading) {value, now, alertType});
         datalock->unlock();
 
+    }
+
+    void checkMotors() {
+        if (alerting) {
+            if (digitalRead(pin1) == 1) {
+                digitalWrite(pin1, 0);
+                digitalWrite(pin1, 0);
+                digitalWrite(pin2, 1);
+            } else {
+                digitalWrite(pin1, 1);
+                digitalWrite(pin2, 0);
+                digitalWrite(pin2, 0);
+            }
+        } else {
+            digitalWrite(pin1, 0);
+            digitalWrite(pin2, 0);
+        }
     }
 
 public:

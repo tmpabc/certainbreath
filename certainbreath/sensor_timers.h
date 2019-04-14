@@ -56,6 +56,7 @@ public:
  */
 class PressureSensorTimer: public CppTimer {
 
+public:
     vector<int> pins, pinVals;
     string type;
     mutex *pinslock, *datalock;
@@ -63,7 +64,7 @@ class PressureSensorTimer: public CppTimer {
     float ampGain;
 
 
-public:
+
     PressureSensorTimer(mutex *pinslock, mutex *datalock, vector<Reading> *dataBuffer,
                         const vector<int> &pins, const vector<int> &pinVals, float ampGain=1.5,
                         const string &type="Pressure") {

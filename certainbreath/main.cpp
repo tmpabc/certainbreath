@@ -62,6 +62,7 @@ int main() {
         config[key] = value;
     }
 
+
     // A1 A0 A2 EN
     vector<int> multiplexerPins({stoi(config["MPPIN1"]), stoi(config["MPPIN2"]),
                                  stoi(config["MPPIN3"]), stoi(config["MPPIN4"])});
@@ -74,10 +75,14 @@ int main() {
         rpInit(stoi(config["SPI_CHANNEL"]), stoi(config["SPEED"]), multiplexerPins, motorPins);
     }
 
+
+
     FakeSensorTimer FSt(&datalock, &dataBuffer, config["FAKESENSORTYPE"]);
     if(config.find("FAKESENSORINTERVAL") != config.end()) {
         FSt.start(stoi(config["FAKESENSORINTERVAL"]) * 1000000);
     }
+
+
 
     PressureSensorTimer PSt_right(&pinslock, &datalock, &dataBuffer,
                                   multiplexerPins, vector<int>({stoi(config["PRESSURERIGHTPIN1"]), stoi(config["PRESSURERIGHTPIN2"]),
@@ -88,6 +93,14 @@ int main() {
         PSt_right.start(stoi(config["PRESSURERIGHTINTERVAL"]) * 1000000);
     }
 
+//    cout << ">>>>" << endl;
+//
+//    cout << ">>>>" << endl;
+//    cout << "RIGHT: " << endl;
+//    for( auto &x: PSt_right.pinVals) {
+//        cout << x << " " << endl;
+//    }
+
     PressureSensorTimer PSt_left(&pinslock, &datalock, &dataBuffer,
                                  multiplexerPins, vector<int>({stoi(config["PRESSURELEFTPIN1"]), stoi(config["PRESSURELEFTPIN2"]),
                                                                stoi(config["PRESSURELEFTPIN3"]), stoi(config["PRESSURELEFTPIN4"])}),
@@ -97,6 +110,10 @@ int main() {
         PSt_left.start(stoi(config["PRESSURELEFTINTERVAL"]) * 1000000);
     }
 
+//    cout << "LEFT: " << endl;
+//    for( auto &x: PSt_left.pinVals) {
+//        cout << x << endl;
+//    }
 
     TempSensorTimer TSt_top(&pinslock, &datalock, &dataBuffer,
                             multiplexerPins, vector<int>({stoi(config["TEMPTOPPIN1"]), stoi(config["TEMPTOPPIN2"]),
@@ -138,16 +155,16 @@ int main() {
             stof(config["PRESSUREANALYSISNOBREATHINGTHRESHOLD"]),
             stof(config["PRESSUREANALYSISHYPERVENTILATIONTHRESHOLD"]),
             stof(config["PRESSUREANALYSISNOISETHRESHOLD"]),
-            stof(config["PRESSUREANALYSISWEIGHTTHRESHOLD"]));
+            stof(config["PRESSUREANALYSISWEIGHTTHRESHOLD"]),
+            motorPins[0],
+            motorPins[1]);
 
     if(config.find("PRESSUREANALYSISINTERVAL") != config.end()) {
         PAt.start(stoi(config["PRESSUREANALYSISINTERVAL"]) * 1000000);
     }
 
     TemperatureAnalysisTimer TAt(&datalock, &dataBuffer,
-            stof(config["TEMPANALYSISTHRESHOLD"]),
-            motorPins[0],
-            motorPins[1]);
+            stof(config["TEMPANALYSISTHRESHOLD"]));
 
     if(config.find("TEMPANALYSISINTERVAL") != config.end()) {
         TAt.start(stoi(config["TEMPANALYSISINTERVAL"]) * 1000000);
