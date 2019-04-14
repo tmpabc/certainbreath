@@ -68,7 +68,8 @@ public:
 
 class PressureAnalysisTimer: public CppTimer {
 
-    vector<Reading> runningData;
+    vector<Reading> runningData1;
+    vector<Reading> runningData2;
     unsigned int runningTime;
     float noBreathingThreshold;
     float hyperVentilationThreshold;
@@ -123,7 +124,7 @@ private:
     }
 
 
-    void analysePressure() {
+    float analysePressure(vector<Reading> &runningData) {
         //cout << "Analysing..." << "\n";
         int length = runningData.size();
 
@@ -133,7 +134,7 @@ private:
             cout << "Length " << length;
             if (length != 0)
             cout << runningData[length - 1].time - runningData[0].time << "\n";
-            return;
+            return -1;
         }
 
         // Calculate the frequency of the breathing:
@@ -166,19 +167,8 @@ private:
         float breathingFreq = 1000.f * spikes / runningTime / 2; // Two spikes per one breath. Convert to breaths/sec.
         cout << "Breathing ferquency: " << breathingFreq << "\n";
 
-        if (breathingFreq < noBreathingThreshold) {
-            // No breathing detected
-            alert(NOBREATHINGALERT, breathingFreq);
-            alerting = true;
-        } else if (breathingFreq > hyperVentilationThreshold) {
-            // Hyperventilation detected.
-            alert(HYPERVALERT, breathingFreq);
-            alerting = true;
-        } else {
-            alerting = false;
-        }
+        return breathingFreq;
 
-        checkMotors();
     }
 
     void alert(const string &alertType, float value) {
@@ -210,17 +200,25 @@ public:
     void timerEvent() {
         long long now = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
 
-        string key = "pressure";
+        string key1 = "Left pressure";
+        string key2 = "Right pressure";
         datalock->lock();
-        // Need to find which sensor provides higher measurements.
-        // We only add measurements of the sensor that provides the max value (i.e. max pressure).
 
-        string maxType = maxReading(key).type;
+        // Collect running data from both sensors.
+
 
         //Add new data
         for (auto &datum : *dataBuffer) {
-            if (datum.type.find(key) != string::npos && !datum.status.analysed && datum.type == maxType) {
-                runningData.push_back(datum);
+            if (datum.type == key1 && !datum.status.analysed) {
+                runningData1.push_back(datum);
+            }
+            datum.status.analysed = true; // We won't need to analyse anything else.
+        }
+        datalock->unlock();
+
+        for (auto &datum : *dataBuffer) {
+            if (datum.type == key2 && !datum.status.analysed) {
+                runningData2.push_back(datum);
             }
             datum.status.analysed = true; // We won't need to analyse anything else.
         }
@@ -228,15 +226,41 @@ public:
 
 
         // Filter out data that is too old from the all runningData.
-        auto it = runningData.begin();
-        while (it != runningData.end()) {
+        auto it = runningData1.begin();
+        while (it != runningData1.end()) {
             if (it->time < now - runningTime) {
-                it = runningData.erase(it);
+                it = runningData1.erase(it);
             } else it++;
         }
 
-        //Analyse the running data.
-        analysePressure();
+        it = runningData2.begin();
+        while (it != runningData2.end()) {
+            if (it->time < now - runningTime) {
+                it = runningData2.erase(it);
+            } else it++;
+        }
+
+        //Analyse the running data. Use the higher frequency.
+        float freq1 = analysePressure(runningData1);
+        float freq2 = analysePressure(runningData2);
+
+        float breathingFreq = max(freq1, freq2);
+
+        if(breathingFreq < 0) return;
+
+        if (breathingFreq < noBreathingThreshold) {
+            // No breathing detected
+            alert(NOBREATHINGALERT, breathingFreq);
+            alerting = true;
+        } else if (breathingFreq > hyperVentilationThreshold) {
+            // Hyperventilation detected.
+            alert(HYPERVALERT, breathingFreq);
+            alerting = true;
+        } else {
+            alerting = false;
+        }
+
+        checkMotors();
     }
 
 };
