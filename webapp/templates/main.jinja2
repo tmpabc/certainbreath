@@ -37,7 +37,7 @@ body, html {height: 100%;font-family:Verdana,sans-serif;font-size:15px;line-heig
 .animate-opacity{animation:opac 0.8s}@keyframes opac{from{opacity:0} to{opacity:1}}
 .text-white,.w3-hover-text-white:hover{color:rgb(38,38,38)!important}
 .padding-large{padding:12px 24px!important}
-.xlarge{font-size:24px!important}
+.xlarge{font-size:32px!important;font-style:italic}
 .border-grey{border-color:#9e9e9e!important}
 .large{font-size:18px!important}
 .center{text-align:center!important}
@@ -55,13 +55,15 @@ body, html {height: 100%;font-family:Verdana,sans-serif;font-size:15px;line-heig
         <h1 id="temperature_text"></h1>
     </div>
 <div class="display-left">
+    <h1><center>Breathing</center></h1>
     <div id="chart_pressure"></div>
 </div>
 <div class="display-right">
+    <h1><center>Body temperature</center></h1>
     <div id="chart_temperature"></div>
 </div>
     <div class="display-bottommiddle">
-    <p class="large center">Protecting your baby for "30" years</p>
+        <p class="xlarge center"><i>Protecting your baby from day one</i></p>
   </div>
   <div class="display-bottomleft padding-large text-white">
   Powered by <a href="https://github.com/tmpabc/certainbreath/" target="_blank" style="color:rgb(38,38,38)">Certain Breath</a>
@@ -91,19 +93,19 @@ body, html {height: 100%;font-family:Verdana,sans-serif;font-size:15px;line-heig
       var noBreathingAlerts = msg.filter(d => d.type == "noB");
       if (noBreathingAlerts.length > 0) {
           lastNoBreathingAlert = noBreathingAlerts[noBreathingAlerts.length - 1];
-          alertNoBreathing(true);
+          alertNoBreathing(true, lastNoBreathingAlert.value);
       }
 
       var hyperVentilationAlerts = msg.filter(d => d.type == "hyperV");
       if (hyperVentilationAlerts.length > 0) {
           lastHyperVentilationAlert = hyperVentilationAlerts[hyperVentilationAlerts.length - 1];
-          alertHyperVentilation(true);
+          alertHyperVentilation(true, lastHyperVentilationAlert.value);
       }
 
       var temperatureAlerts = msg.filter(d => d.type == "highT");
       if (temperatureAlerts.length > 0) {
           lastHighTemperatureAlert = temperatureAlerts[temperatureAlerts.length - 1];
-          alertHighTemperature(true);
+          alertHighTemperature(true, lastHighTemperatureAlert.value);
       }
 
       if (pressureArr.length > MAX_LENGTH) {
@@ -118,25 +120,25 @@ body, html {height: 100%;font-family:Verdana,sans-serif;font-size:15px;line-heig
       d3.select("#chart_temperature").datum(temperatureArr).call(temperatureChart);
       };
 
-    function alertNoBreathing(enable) {
+    function alertNoBreathing(enable, value) {
         if (enable) {
-            d3.select("#no_breathing_text").text("No breathing detected!");
+            d3.select("#no_breathing_text").text("No breathing detected! " + value);
         } else {
             d3.select("#no_breathing_text").text("");
         }
     }
 
-    function alertHighTemperature(enable) {
+    function alertHighTemperature(enable, value) {
         if (enable) {
-            d3.select("#temperature_text").text("Fever detected!");
+            d3.select("#temperature_text").text("Fever detected! " + value);
         } else {
             d3.select("#temperature_text").text("");
         }
     }
 
-    function alertHyperVentilation(enable) {
+    function alertHyperVentilation(enable, value) {
         if (enable) {
-            d3.select("#hyperventilation_text").text("Hyper ventilation detected!");
+            d3.select("#hyperventilation_text").text("Hyper ventilation detected! " + value);
         } else {
             d3.select("#hyperventilation_text").text("");
         }
